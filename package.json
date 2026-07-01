@@ -1,7 +1,7 @@
 {
-  "name": "messenger-app",
+  "name": "nexus",
   "version": "1.0.0",
-  "description": "WhatsApp-like messaging app built with MERN",
+  "description": "Nexus - Real-time messaging app built with MERN",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",

@@ -1,7 +1,7 @@
-# WhatsApp-Clone (MERN) — Step-by-Step Build Roadmap
+# Nexus (MERN) — Step-by-Step Build Roadmap
 
 ## Context
-Fresh project. Goal: build a WhatsApp-like messaging app using MERN (MongoDB, Express, React, Node.js). Deployment (Docker + AWS Elastic Beanstalk) happens only after the full app is built.
+Fresh project. Goal: build **Nexus**, a real-time messaging application using MERN (MongoDB, Express, React, Node.js). Deployment (Docker + AWS Elastic Beanstalk) happens only after the full app is built.
 
 ## Prerequisites to Install
 - **Node.js (LTS)** — includes npm
