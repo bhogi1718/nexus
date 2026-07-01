@@ -38,7 +38,13 @@ export const Chat = () => {
       setError('');
       console.log('Loading conversations...');
       const response = await chatAPI.getConversations();
+      console.log('Raw API response:', response);
+      console.log('Response data:', response.data);
       console.log('Conversations loaded:', response.data.conversations);
+      if (response.data.conversations && response.data.conversations.length > 0) {
+        console.log('First conversation participants:', response.data.conversations[0].participants);
+        console.log('First conversation participants length:', response.data.conversations[0].participants?.length);
+      }
       setConversations(response.data.conversations || []);
       setLoading(false);
     } catch (err) {
