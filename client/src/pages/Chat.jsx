@@ -1,0 +1,268 @@
+import React, { useState, useEffect } from 'react';
+import { useAuth } from '../hooks/useAuth';
+import chatAPI from '../services/chatService';
+
+export const Chat = () => {
+  const { user, logout } = useAuth();
+  const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [messageInput, setMessageInput] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+
+  useEffect(() => {
+    loadConversations();
+  }, []);
+
+  const loadConversations = async () => {
+    try {
+      setLoading(true);
+      const response = await chatAPI.getConversations();
+      setConversations(response.data.conversations);
+    } catch (err) {
+      setError('Failed to load conversations');
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMessages = async (conversationId) => {
+    try {
+      const response = await chatAPI.getMessages(conversationId);
+      setMessages(response.data.messages);
+      setSelectedConversation(conversationId);
+    } catch (err) {
+      setError('Failed to load messages');
+      console.error(err);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!messageInput.trim() || !selectedConversation) return;
+
+    try {
+      const response = await chatAPI.sendMessage(selectedConversation, messageInput);
+      setMessages([...messages, response.data.message]);
+      setMessageInput('');
+
+      // Update last message in conversation list
+      loadConversations();
+    } catch (err) {
+      setError('Failed to send message');
+      console.error(err);
+    }
+  };
+
+  const handleSearch = async (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const response = await chatAPI.searchUsers(query);
+      setSearchResults(response.data.users);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const startConversation = async (userId) => {
+    try {
+      const response = await chatAPI.getOrCreateConversation(userId);
+      loadConversations();
+      loadMessages(response.data.conversation._id);
+      setSearchQuery('');
+      setSearchResults([]);
+    } catch (err) {
+      setError('Failed to start conversation');
+      console.error(err);
+    }
+  };
+
+  const getConversationName = (conversation) => {
+    if (conversation.type === 'group') {
+      return conversation.name;
+    }
+    const otherUser = conversation.participants.find(p => p._id !== user.id);
+    return otherUser ? otherUser.name : 'Unknown';
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* Navigation */}
+      <nav className="bg-white border-b border-gray-200 shadow-sm">
+        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
+          <div className="flex items-center gap-3">
+            <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg">
+              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+              </svg>
+            </div>
+            <h1 className="text-2xl font-bold text-gray-900">Nexus</h1>
+          </div>
+          <button
+            onClick={logout}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
+          >
+            Logout
+          </button>
+        </div>
+      </nav>
+
+      {/* Main Chat Area */}
+      <div className="flex-1 flex max-w-7xl w-full mx-auto gap-6 p-6">
+        {/* Conversations Sidebar */}
+        <div className="w-80 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+          {/* Search */}
+          <div className="p-4 border-b border-gray-100">
+            <input
+              type="text"
+              placeholder="Search users..."
+              value={searchQuery}
+              onChange={handleSearch}
+              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50"
+            />
+          </div>
+
+          {/* Search Results */}
+          {searchResults.length > 0 && (
+            <div className="flex-1 overflow-y-auto border-b border-gray-100">
+              {searchResults.map(searchUser => (
+                <button
+                  key={searchUser._id}
+                  onClick={() => startConversation(searchUser._id)}
+                  className="w-full p-4 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors"
+                >
+                  <p className="font-semibold text-gray-900">{searchUser.name}</p>
+                  <p className="text-sm text-gray-500">{searchUser.email}</p>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Conversations List */}
+          {searchResults.length === 0 && (
+            <div className="flex-1 overflow-y-auto">
+              {loading ? (
+                <div className="p-4 text-center text-gray-500">Loading...</div>
+              ) : conversations.length === 0 ? (
+                <div className="p-4 text-center text-gray-500">No conversations yet</div>
+              ) : (
+                conversations.map(conversation => (
+                  <button
+                    key={conversation._id}
+                    onClick={() => loadMessages(conversation._id)}
+                    className={`w-full p-4 text-left border-b border-gray-100 transition-colors ${
+                      selectedConversation === conversation._id
+                        ? 'bg-blue-50'
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <p className="font-semibold text-gray-900">
+                      {getConversationName(conversation)}
+                    </p>
+                    <p className="text-sm text-gray-500 truncate">
+                      {conversation.lastMessage?.content || 'No messages yet'}
+                    </p>
+                  </button>
+                ))
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Chat Window */}
+        <div className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col">
+          {selectedConversation ? (
+            <>
+              {/* Chat Header */}
+              <div className="p-4 border-b border-gray-100">
+                {conversations.map(conv => {
+                  if (conv._id === selectedConversation) {
+                    return (
+                      <div key={conv._id}>
+                        <h2 className="text-xl font-bold text-gray-900">
+                          {getConversationName(conv)}
+                        </h2>
+                        <p className="text-sm text-gray-500">
+                          {conv.participants.length} participants
+                        </p>
+                      </div>
+                    );
+                  }
+                })}
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-4 space-y-4">
+                {messages.length === 0 ? (
+                  <div className="text-center text-gray-500 py-8">No messages yet</div>
+                ) : (
+                  messages.map(message => (
+                    <div
+                      key={message._id}
+                      className={`flex ${
+                        message.sender._id === user.id ? 'justify-end' : 'justify-start'
+                      }`}
+                    >
+                      <div
+                        className={`max-w-xs px-4 py-2 rounded-lg ${
+                          message.sender._id === user.id
+                            ? 'bg-blue-600 text-white'
+                            : 'bg-gray-100 text-gray-900'
+                        }`}
+                      >
+                        <p className="text-sm">{message.content}</p>
+                        <p
+                          className={`text-xs mt-1 ${
+                            message.sender._id === user.id
+                              ? 'text-blue-100'
+                              : 'text-gray-500'
+                          }`}
+                        >
+                          {new Date(message.createdAt).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+
+              {/* Input */}
+              <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100">
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    value={messageInput}
+                    onChange={e => setMessageInput(e.target.value)}
+                    placeholder="Type a message..."
+                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                  >
+                    Send
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-gray-500">
+              Select a conversation to start chatting
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
