@@ -28,7 +28,10 @@ export const getOrCreateConversation = async (req, res) => {
         createdBy: currentUserId
       });
       await conversation.save();
-      await conversation.populate('participants', '-password');
+      // Refetch with populated data
+      conversation = await Conversation.findById(conversation._id)
+        .populate('participants', '-password')
+        .populate('lastMessage');
     }
 
     res.status(200).json({ conversation });
