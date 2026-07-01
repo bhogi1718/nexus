@@ -36,7 +36,9 @@ export const Chat = () => {
     try {
       setLoading(true);
       setError('');
+      console.log('Loading conversations...');
       const response = await chatAPI.getConversations();
+      console.log('Conversations loaded:', response.data.conversations);
       setConversations(response.data.conversations || []);
       setLoading(false);
     } catch (err) {
@@ -226,7 +228,9 @@ export const Chat = () => {
               ) : conversations.length === 0 ? (
                 <div className="p-4 text-center text-gray-500">No conversations yet</div>
               ) : (
-                conversations.map(conversation => (
+                <>
+                  {console.log('Rendering conversations:', conversations)}
+                  {conversations.map(conversation => (
                   <button
                     key={conversation._id}
                     onClick={() => loadMessages(conversation._id)}
@@ -243,7 +247,8 @@ export const Chat = () => {
                       {conversation.lastMessage?.content || 'No messages yet'}
                     </p>
                   </button>
-                ))
+                ))}
+                </>
               )}
             </div>
           )}
