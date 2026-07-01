@@ -271,7 +271,13 @@ export const Chat = () => {
                   <div className="text-center text-gray-500 py-12">No messages yet. Start the conversation!</div>
                 ) : (
                   messages.map(message => {
-                    const isCurrentUser = message.sender._id.toString() === user.id.toString();
+                    if (!message || !message.sender) {
+                      console.warn('Invalid message structure:', message);
+                      return null;
+                    }
+                    const senderId = typeof message.sender === 'string' ? message.sender : message.sender._id;
+                    const userId = user?.id;
+                    const isCurrentUser = senderId && userId && senderId.toString() === userId.toString();
                     return (
                       <div
                         key={message._id}
@@ -282,7 +288,7 @@ export const Chat = () => {
                         {!isCurrentUser && (
                           <div className="flex flex-col items-center">
                             <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                              {message.sender?.name ? message.sender.name.charAt(0).toUpperCase() : '?'}
+                              {message.sender?.name ? message.sender.name.charAt(0).toUpperCase() : 'U'}
                             </div>
                           </div>
                         )}
@@ -295,7 +301,7 @@ export const Chat = () => {
                         >
                           {!isCurrentUser && (
                             <p className="text-xs font-semibold text-gray-500 mb-1">
-                              {message.sender.name}
+                              {message.sender?.name || 'User'}
                             </p>
                           )}
                           <p className="text-sm break-words">{message.content}</p>
