@@ -92,7 +92,7 @@ export const Chat = () => {
     if (conversation.type === 'group') {
       return conversation.name;
     }
-    const otherUser = conversation.participants.find(p => p._id !== user.id);
+    const otherUser = conversation.participants.find(p => p._id.toString() !== user.id.toString());
     return otherUser ? otherUser.name : 'Unknown';
   };
 
@@ -211,12 +211,12 @@ export const Chat = () => {
                     <div
                       key={message._id}
                       className={`flex ${
-                        message.sender._id === user.id ? 'justify-end' : 'justify-start'
+                        message.sender._id.toString() === user.id.toString() ? 'justify-end' : 'justify-start'
                       }`}
                     >
                       <div
                         className={`max-w-xs px-4 py-2 rounded-lg ${
-                          message.sender._id === user.id
+                          message.sender._id.toString() === user.id.toString()
                             ? 'bg-blue-600 text-white'
                             : 'bg-gray-100 text-gray-900'
                         }`}
@@ -224,7 +224,7 @@ export const Chat = () => {
                         <p className="text-sm">{message.content}</p>
                         <p
                           className={`text-xs mt-1 ${
-                            message.sender._id === user.id
+                            message.sender._id.toString() === user.id.toString()
                               ? 'text-blue-100'
                               : 'text-gray-500'
                           }`}
