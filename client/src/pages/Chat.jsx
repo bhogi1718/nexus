@@ -112,18 +112,35 @@ export const Chat = () => {
   };
 
   const getConversationName = (conversation) => {
-    if (!conversation || !user) return 'Unknown';
-    if (conversation.type === 'group') {
-      return conversation.name || 'Group Chat';
-    }
-    if (!conversation.participants || conversation.participants.length === 0) {
+    try {
+      if (!conversation || !user || !user.id) return 'Unknown';
+
+      if (conversation.type === 'group') {
+        return conversation.name || 'Group Chat';
+      }
+
+      if (!conversation.participants || !Array.isArray(conversation.participants) || conversation.participants.length === 0) {
+        return 'Unknown';
+      }
+
+      const otherUser = conversation.participants.find(p => {
+        // Handle both object and string formats
+        if (!p) return false;
+
+        const participantId = typeof p === 'string' ? p : p._id;
+        const userId = typeof user.id === 'string' ? user.id : user.id.toString();
+
+        if (!participantId) return false;
+
+        const pId = typeof participantId === 'string' ? participantId : participantId.toString();
+        return pId !== userId;
+      });
+
+      return otherUser ? (typeof otherUser === 'string' ? 'User' : otherUser.name || 'User') : 'Unknown';
+    } catch (error) {
+      console.error('Error in getConversationName:', error);
       return 'Unknown';
     }
-    const otherUser = conversation.participants.find(p => {
-      if (!p || !p._id) return false;
-      return p._id.toString() !== user.id.toString();
-    });
-    return otherUser ? otherUser.name : 'Unknown';
   };
 
   if (loading) {
