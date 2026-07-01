@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import chatAPI from '../services/chatService';
 
@@ -13,7 +13,7 @@ export const Chat = () => {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
-  const messagesEndRef = React.useRef(null);
+  const messagesEndRef = useRef(null);
 
   useEffect(() => {
     loadConversations();
