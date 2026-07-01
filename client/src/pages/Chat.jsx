@@ -123,20 +123,26 @@ export const Chat = () => {
         return 'Unknown';
       }
 
+      console.log('Conversation participants:', conversation.participants);
+      console.log('Current user ID:', user.id);
+
       const otherUser = conversation.participants.find(p => {
-        // Handle both object and string formats
         if (!p) return false;
 
-        const participantId = typeof p === 'string' ? p : p._id;
+        // Get IDs as strings for comparison
+        const participantId = typeof p === 'string' ? p : (p._id ? p._id.toString() : p.toString());
         const userId = typeof user.id === 'string' ? user.id : user.id.toString();
 
-        if (!participantId) return false;
+        console.log('Comparing:', participantId, '!==', userId, '=', participantId !== userId);
 
-        const pId = typeof participantId === 'string' ? participantId : participantId.toString();
-        return pId !== userId;
+        return participantId !== userId;
       });
 
-      return otherUser ? (typeof otherUser === 'string' ? 'User' : otherUser.name || 'User') : 'Unknown';
+      console.log('Other user found:', otherUser);
+
+      if (!otherUser) return 'Unknown';
+      if (typeof otherUser === 'string') return 'User';
+      return otherUser.name || 'User';
     } catch (error) {
       console.error('Error in getConversationName:', error);
       return 'Unknown';
