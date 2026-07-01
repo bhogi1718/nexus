@@ -9,13 +9,28 @@ export const Chat = () => {
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const messagesEndRef = React.useRef(null);
 
   useEffect(() => {
     loadConversations();
   }, []);
+
+  // Auto-scroll to bottom when messages change
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  // Auto-clear errors after 3 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
 
   const loadConversations = async () => {
     try {
@@ -45,16 +60,22 @@ export const Chat = () => {
     e.preventDefault();
     if (!messageInput.trim() || !selectedConversation) return;
 
+    setSendingMessage(true);
+    const messageContent = messageInput;
+
     try {
-      const response = await chatAPI.sendMessage(selectedConversation, messageInput);
+      const response = await chatAPI.sendMessage(selectedConversation, messageContent);
       setMessages([...messages, response.data.message]);
       setMessageInput('');
+      setError('');
 
       // Update last message in conversation list
       loadConversations();
     } catch (err) {
-      setError('Failed to send message');
+      setError(err.response?.data?.message || 'Failed to send message');
       console.error(err);
+    } finally {
+      setSendingMessage(false);
     }
   };
 
@@ -203,7 +224,7 @@ export const Chat = () => {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-gray-50">
+              <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-gray-50" style={{ scrollBehavior: 'smooth' }}>
                 {messages.length === 0 ? (
                   <div className="text-center text-gray-500 py-12">No messages yet. Start the conversation!</div>
                 ) : (
@@ -219,7 +240,7 @@ export const Chat = () => {
                         {!isCurrentUser && (
                           <div className="flex flex-col items-center">
                             <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                              {message.sender.name.charAt(0).toUpperCase()}
+                              {message.sender?.name ? message.sender.name.charAt(0).toUpperCase() : '?'}
                             </div>
                           </div>
                         )}
@@ -252,7 +273,7 @@ export const Chat = () => {
                         {isCurrentUser && (
                           <div className="flex flex-col items-center">
                             <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
-                              {user.name.charAt(0).toUpperCase()}
+                              {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
                             </div>
                           </div>
                         )}
@@ -260,23 +281,44 @@ export const Chat = () => {
                     );
                   })
                 )}
+                <div ref={messagesEndRef} />
               </div>
 
               {/* Input */}
               <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100">
+                {error && (
+                  <div className="mb-3 p-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center gap-2">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    {error}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <input
                     type="text"
                     value={messageInput}
                     onChange={e => setMessageInput(e.target.value)}
                     placeholder="Type a message..."
-                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    disabled={sendingMessage}
+                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
                   />
                   <button
                     type="submit"
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors"
+                    disabled={sendingMessage || !messageInput.trim()}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    Send
+                    {sendingMessage ? (
+                      <>
+                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        Sending...
+                      </>
+                    ) : (
+                      'Send'
+                    )}
                   </button>
                 </div>
               </form>
