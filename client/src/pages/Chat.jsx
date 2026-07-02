@@ -103,7 +103,7 @@ export const Chat = () => {
     }
   };
 
-  const handleSendMessage = async (e) => {
+  const handleSendMessage = (e) => {
     e.preventDefault();
     if (!messageInput.trim() || !selectedConversation) return;
 
@@ -113,9 +113,6 @@ export const Chat = () => {
 
     // Send via Socket.io for real-time delivery
     sendMessage(selectedConversation, messageContent);
-
-    // Also update conversation list
-    loadConversations();
   };
 
   const handleSearch = async (e) => {
