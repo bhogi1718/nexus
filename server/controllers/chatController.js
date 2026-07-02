@@ -22,19 +22,16 @@ export const getOrCreateConversation = async (req, res) => {
     }).populate('participants', '-password').populate('lastMessage');
 
     if (!conversation) {
-      console.log('Creating new conversation with participants:', [currentUserId, userId]);
       conversation = new Conversation({
         type: 'private',
         participants: [currentUserId, userId],
         createdBy: currentUserId
       });
       await conversation.save();
-      console.log('Conversation saved:', conversation);
       // Refetch with populated data
       conversation = await Conversation.findById(conversation._id)
         .populate('participants', '-password')
         .populate('lastMessage');
-      console.log('Conversation after populate:', conversation);
     }
 
     res.status(200).json({ conversation });
@@ -46,7 +43,6 @@ export const getOrCreateConversation = async (req, res) => {
 // Get all conversations for current user
 export const getConversations = async (req, res) => {
   try {
-    console.log('Fetching conversations for user:', req.userId);
     const conversations = await Conversation.find({
       participants: req.userId
     })
@@ -54,15 +50,6 @@ export const getConversations = async (req, res) => {
       .populate('lastMessage')
       .populate('createdBy', '-password')
       .sort({ lastMessageAt: -1 });
-
-    console.log('Conversations found:', conversations.length);
-    conversations.forEach((conv, i) => {
-      console.log(`Conversation ${i}:`, {
-        _id: conv._id,
-        participants: conv.participants,
-        participantsCount: conv.participants ? conv.participants.length : 0
-      });
-    });
 
     res.status(200).json({ conversations });
   } catch (error) {
