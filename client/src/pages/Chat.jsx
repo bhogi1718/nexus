@@ -233,7 +233,9 @@ export const Chat = () => {
                       {conversation.lastMessage?.content || 'No messages yet'}
                     </p>
                   </button>
-                ))}
+                ))
+              )}
+            </div>
           )}
         </div>
 
