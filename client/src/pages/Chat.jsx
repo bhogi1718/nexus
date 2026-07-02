@@ -36,15 +36,7 @@ export const Chat = () => {
     try {
       setLoading(true);
       setError('');
-      console.log('Loading conversations...');
       const response = await chatAPI.getConversations();
-      console.log('Raw API response:', response);
-      console.log('Response data:', response.data);
-      console.log('Conversations loaded:', response.data.conversations);
-      if (response.data.conversations && response.data.conversations.length > 0) {
-        console.log('First conversation participants:', response.data.conversations[0].participants);
-        console.log('First conversation participants length:', response.data.conversations[0].participants?.length);
-      }
       setConversations(response.data.conversations || []);
       setLoading(false);
     } catch (err) {
@@ -121,36 +113,26 @@ export const Chat = () => {
 
   const getConversationName = (conversation) => {
     try {
-      if (!conversation || !user || !user.id) return 'Unknown';
+      if (!conversation || !user) return 'Unknown';
 
       if (conversation.type === 'group') {
         return conversation.name || 'Group Chat';
       }
 
-      if (!conversation.participants || !Array.isArray(conversation.participants) || conversation.participants.length === 0) {
+      if (!conversation.participants || conversation.participants.length === 0) {
         return 'Unknown';
       }
 
-      console.log('Conversation participants:', conversation.participants);
-      console.log('Current user ID:', user.id);
-
+      // Find the participant that is NOT the current user
       const otherUser = conversation.participants.find(p => {
-        if (!p) return false;
-
-        // Get IDs as strings for comparison
-        const participantId = typeof p === 'string' ? p : (p._id ? p._id.toString() : p.toString());
-        const userId = typeof user.id === 'string' ? user.id : user.id.toString();
-
-        console.log('Comparing:', participantId, '!==', userId, '=', participantId !== userId);
-
-        return participantId !== userId;
+        if (!p || !p._id) return false;
+        // Convert both to string for reliable comparison
+        const pId = String(p._id);
+        const userId = String(user.id);
+        return pId !== userId;
       });
 
-      console.log('Other user found:', otherUser);
-
-      if (!otherUser) return 'Unknown';
-      if (typeof otherUser === 'string') return 'User';
-      return otherUser.name || 'User';
+      return otherUser?.name || 'Unknown';
     } catch (error) {
       console.error('Error in getConversationName:', error);
       return 'Unknown';
@@ -234,9 +216,7 @@ export const Chat = () => {
               ) : conversations.length === 0 ? (
                 <div className="p-4 text-center text-gray-500">No conversations yet</div>
               ) : (
-                <>
-                  {console.log('Rendering conversations:', conversations)}
-                  {conversations.map(conversation => (
+                conversations.map(conversation => (
                   <button
                     key={conversation._id}
                     onClick={() => loadMessages(conversation._id)}
@@ -254,9 +234,6 @@ export const Chat = () => {
                     </p>
                   </button>
                 ))}
-                </>
-              )}
-            </div>
           )}
         </div>
 
