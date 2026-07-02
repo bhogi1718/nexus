@@ -1,6 +1,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import chatAPI from '../services/chatService';
+import {
+  getSocket,
+  joinConversation,
+  leaveConversation,
+  sendMessage,
+  startTyping,
+  stopTyping,
+  onMessageReceive,
+  onTypingStart,
+  onTypingStop,
+  offMessageReceive,
+  offTypingStart,
+  offTypingStop
+} from '../services/socket';
 
 export const Chat = () => {
   const { user, logout } = useAuth();
@@ -13,7 +27,9 @@ export const Chat = () => {
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
+  const [typingUsers, setTypingUsers] = useState([]);
   const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
 
   useEffect(() => {
     loadConversations();
@@ -49,9 +65,38 @@ export const Chat = () => {
 
   const loadMessages = async (conversationId) => {
     try {
+      // Leave previous conversation
+      if (selectedConversation) {
+        leaveConversation(selectedConversation);
+        offMessageReceive();
+        offTypingStart();
+        offTypingStop();
+      }
+
+      // Load messages from REST API
       const response = await chatAPI.getMessages(conversationId);
       setMessages(response.data.messages);
       setSelectedConversation(conversationId);
+      setTypingUsers([]);
+
+      // Join new conversation room
+      joinConversation(conversationId);
+
+      // Listen for real-time messages
+      onMessageReceive((message) => {
+        setMessages(prev => [...prev, message]);
+      });
+
+      // Listen for typing indicators
+      onTypingStart(({ userId }) => {
+        if (userId !== user.id) {
+          setTypingUsers(prev => [...new Set([...prev, userId])]);
+        }
+      });
+
+      onTypingStop(({ userId }) => {
+        setTypingUsers(prev => prev.filter(id => id !== userId));
+      });
     } catch (err) {
       setError('Failed to load messages');
       console.error(err);
@@ -62,23 +107,15 @@ export const Chat = () => {
     e.preventDefault();
     if (!messageInput.trim() || !selectedConversation) return;
 
-    setSendingMessage(true);
     const messageContent = messageInput;
+    setMessageInput('');
+    stopTyping(selectedConversation);
 
-    try {
-      const response = await chatAPI.sendMessage(selectedConversation, messageContent);
-      setMessages([...messages, response.data.message]);
-      setMessageInput('');
-      setError('');
+    // Send via Socket.io for real-time delivery
+    sendMessage(selectedConversation, messageContent);
 
-      // Update last message in conversation list
-      loadConversations();
-    } catch (err) {
-      setError(err.response?.data?.message || 'Failed to send message');
-      console.error(err);
-    } finally {
-      setSendingMessage(false);
-    }
+    // Also update conversation list
+    loadConversations();
   };
 
   const handleSearch = async (e) => {
@@ -95,6 +132,25 @@ export const Chat = () => {
       setSearchResults(response.data.users);
     } catch (err) {
       console.error(err);
+    }
+  };
+
+  const handleMessageInputChange = (e) => {
+    setMessageInput(e.target.value);
+
+    // Emit typing start
+    if (selectedConversation) {
+      startTyping(selectedConversation);
+
+      // Clear previous timeout
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      // Emit typing stop after 1 second of inactivity
+      typingTimeoutRef.current = setTimeout(() => {
+        stopTyping(selectedConversation);
+      }, 1000);
     }
   };
 
@@ -325,6 +381,16 @@ export const Chat = () => {
                     );
                   })
                 )}
+                {typingUsers.length > 0 && (
+                  <div className="flex items-center gap-2 px-4 py-2 text-gray-500 text-sm">
+                    <span className="flex gap-1">
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                    </span>
+                    Someone is typing...
+                  </div>
+                )}
                 <div ref={messagesEndRef} />
               </div>
 
@@ -342,27 +408,16 @@ export const Chat = () => {
                   <input
                     type="text"
                     value={messageInput}
-                    onChange={e => setMessageInput(e.target.value)}
+                    onChange={handleMessageInputChange}
                     placeholder="Type a message..."
-                    disabled={sendingMessage}
-                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100 disabled:cursor-not-allowed"
+                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     type="submit"
-                    disabled={sendingMessage || !messageInput.trim()}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                    disabled={!messageInput.trim()}
+                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
                   >
-                    {sendingMessage ? (
-                      <>
-                        <svg className="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
-                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                        </svg>
-                        Sending...
-                      </>
-                    ) : (
-                      'Send'
-                    )}
+                    Send
                   </button>
                 </div>
               </form>
