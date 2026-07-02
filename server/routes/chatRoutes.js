@@ -6,9 +6,11 @@ import {
   sendMessage,
   markAsRead,
   searchUsers,
-  getConversationDetails
+  getConversationDetails,
+  uploadMedia
 } from '../controllers/chatController.js';
 import { verifyToken } from '../middleware/auth.js';
+import { upload } from '../middleware/upload.js';
 
 const router = express.Router();
 
@@ -27,5 +29,8 @@ router.put('/message/:messageId/read', markAsRead);
 
 // Search
 router.get('/search/users', searchUsers);
+
+// Media upload
+router.post('/upload', upload.single('file'), uploadMedia);
 
 export default router;
