@@ -1,5 +1,6 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
+import { initializeSocket, disconnectSocket } from '../services/socket';
 
 export const AuthContext = createContext();
 
@@ -14,6 +15,7 @@ export const AuthProvider = ({ children }) => {
         try {
           const response = await authAPI.getProfile();
           setUser(response.data.user);
+          initializeSocket(token);
         } catch (error) {
           localStorage.removeItem('token');
           setToken(null);
@@ -30,6 +32,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('token', response.data.token);
     setToken(response.data.token);
     setUser(response.data.user);
+    initializeSocket(response.data.token);
     return response.data;
   };
 
@@ -38,6 +41,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.setItem('token', response.data.token);
     setToken(response.data.token);
     setUser(response.data.user);
+    initializeSocket(response.data.token);
     return response.data;
   };
 
@@ -47,6 +51,7 @@ export const AuthProvider = ({ children }) => {
     } catch (error) {
       console.log('Logout error:', error);
     }
+    disconnectSocket();
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
