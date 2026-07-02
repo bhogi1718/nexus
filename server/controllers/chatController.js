@@ -1,6 +1,7 @@
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
+import { uploadToCloudinary } from '../services/cloudStorage.js';
 
 // Create or get private conversation
 export const getOrCreateConversation = async (req, res) => {
@@ -205,5 +206,26 @@ export const getConversationDetails = async (req, res) => {
     res.status(200).json({ conversation });
   } catch (error) {
     res.status(500).json({ message: 'Server error', error: error.message });
+  }
+};
+
+// Upload media file
+export const uploadMedia = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: 'No file provided' });
+    }
+
+    // Upload to Cloudinary
+    const uploadResult = await uploadToCloudinary(req.file.path, 'nexus/messages');
+
+    res.status(200).json({
+      url: uploadResult.url,
+      fileName: req.file.originalname,
+      fileSize: uploadResult.size,
+      publicId: uploadResult.publicId
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Upload failed', error: error.message });
   }
 };
