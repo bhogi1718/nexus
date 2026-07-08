@@ -1,26 +1,71 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
+import api from '../services/api';
+import { generateKeypair, storeKeys, getKeys } from '../services/cryptoService';
 import { useAuth } from '../hooks/useAuth';
 
 export const Login = () => {
-  const [formData, setFormData] = useState({ email: '', password: '' });
+  const [step, setStep] = useState(1); // 1: email entry, 2: otp verification
+  const [formData, setFormData] = useState({ email: '', otp: '' });
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const { login } = useAuth();
   const navigate = useNavigate();
+  const { loginWithToken } = useAuth();
 
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData(prev => ({ ...prev, [name]: value }));
   };
 
-  const handleSubmit = async (e) => {
+  const handleSendOTP = async (e) => {
     e.preventDefault();
     setError('');
     setLoading(true);
 
     try {
-      await login(formData);
+      await api.post('/auth/send-otp-login', { email: formData.email });
+      setStep(2);
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to send OTP');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleVerifyOTPAndLogin = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const response = await api.post('/auth/verify-otp-login', {
+        email: formData.email,
+        otp: formData.otp
+      });
+      // Update auth context so ProtectedRoute lets us through immediately
+      loginWithToken(response.data.token, response.data.user);
+
+      // Restore encryption keys: server is the source of truth so messages
+      // decrypt on any device/session. Only generate if the server has none.
+      const serverUser = response.data.user;
+      if (serverUser.publicKey && serverUser.secretKey) {
+        storeKeys(serverUser.publicKey, serverUser.secretKey);
+      } else {
+        let keys = getKeys();
+        if (!keys.secretKey || !keys.publicKey) {
+          keys = generateKeypair();
+          storeKeys(keys.publicKey, keys.secretKey);
+        }
+        try {
+          await api.post('/auth/update-public-key', {
+            publicKey: keys.publicKey,
+            secretKey: keys.secretKey
+          });
+        } catch (updateErr) {
+          console.warn('Failed to sync keys to server:', updateErr.message);
+        }
+      }
+
       navigate('/');
     } catch (err) {
       setError(err.response?.data?.message || 'Login failed');
@@ -56,51 +101,96 @@ export const Login = () => {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
-              <input
-                type="email"
-                name="email"
-                value={formData.email}
-                onChange={handleChange}
-                className="auth-input"
-                placeholder="you@example.com"
-                required
-              />
-            </div>
+          {/* Step 1: Email Entry */}
+          {step === 1 && (
+            <form onSubmit={handleSendOTP} className="space-y-4">
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
+                <input
+                  type="email"
+                  name="email"
+                  value={formData.email}
+                  onChange={handleChange}
+                  className="auth-input"
+                  placeholder="you@example.com"
+                  required
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Password</label>
-              <input
-                type="password"
-                name="password"
-                value={formData.password}
-                onChange={handleChange}
-                className="auth-input"
-                placeholder="••••••••"
-                required
-              />
-            </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="auth-button mt-6"
+              >
+                {loading ? (
+                  <span className="flex items-center justify-center gap-2">
+                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    Sending OTP...
+                  </span>
+                ) : (
+                  'Send OTP'
+                )}
+              </button>
+            </form>
+          )}
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="auth-button mt-6"
-            >
-              {loading ? (
-                <span className="flex items-center justify-center gap-2">
-                  <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
-                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                  </svg>
-                  Signing in...
-                </span>
-              ) : (
-                'Sign In'
-              )}
-            </button>
-          </form>
+          {/* Step 2: OTP Verification */}
+          {step === 2 && (
+            <form onSubmit={handleVerifyOTPAndLogin} className="space-y-4">
+              <div className="p-4 bg-blue-50 rounded-lg mb-4">
+                <p className="text-sm text-blue-900">Verification code sent to <strong>{formData.email}</strong></p>
+                <p className="text-xs text-blue-700 mt-2">Check your inbox for the 4-digit code</p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Verification Code</label>
+                <input
+                  type="text"
+                  name="otp"
+                  value={formData.otp}
+                  onChange={handleChange}
+                  className="auth-input text-center text-2xl tracking-widest"
+                  placeholder="0000"
+                  maxLength="4"
+                  required
+                />
+                <p className="text-xs text-gray-500 mt-1">4-digit code from email</p>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setStep(1);
+                    setError('');
+                  }}
+                  className="flex-1 py-3 px-4 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="flex-1 auth-button"
+                >
+                  {loading ? (
+                    <span className="flex items-center justify-center gap-2">
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Signing in...
+                    </span>
+                  ) : (
+                    'Sign In'
+                  )}
+                </button>
+              </div>
+            </form>
+          )}
 
           <div className="mt-6 relative">
             <div className="absolute inset-0 flex items-center">

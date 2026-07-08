@@ -1,41 +1,170 @@
+import dotenv from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Load environment variables from .env file
+dotenv.config({ path: path.join(__dirname, '.env') });
+
 import express from 'express';
 import cors from 'cors';
-import dotenv from 'dotenv';
 import mongoose from 'mongoose';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
+import helmet from 'helmet';
+import rateLimit from 'express-rate-limit';
 import authRoutes from './routes/authRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import Message from './models/Message.js';
+import Conversation from './models/Conversation.js';
+import { setIO } from './services/socketRegistry.js';
 
-dotenv.config();
+// Validate required environment variables.
+// AWS keys are NOT required: on EC2/Elastic Beanstalk the SDK uses the
+// instance role automatically; keys are only needed for local development.
+const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'AWS_S3_BUCKET'];
+const missingEnvVars = requiredEnvVars.filter(env => !process.env[env]);
+
+if (missingEnvVars.length > 0) {
+  console.error(`❌ Missing required environment variables: ${missingEnvVars.join(', ')}`);
+  console.error(`📝 Copy .env.example to .env and fill in the values`);
+  process.exit(1);
+}
+
+if (!process.env.AWS_ACCESS_KEY_ID) {
+  console.log('ℹ AWS keys not set — using instance role credentials (expected in production)');
+}
 
 const app = express();
 const httpServer = createServer(app);
+
+// Get CORS origins from environment or use defaults
+const corsOrigins = (process.env.CORS_ORIGINS || 'http://localhost:5173,http://localhost:5174,http://localhost:3000').split(',');
+
 const io = new Server(httpServer, {
   cors: {
-    origin: process.env.CLIENT_URL || 'http://localhost:5173',
-    credentials: true
+    origin: corsOrigins,
+    credentials: true,
+    methods: ['GET', 'POST']
   }
 });
 
+// Make io available to REST controllers (read receipts etc.)
+setIO(io);
+
+// Security Middleware
+app.use(helmet()); // Secure HTTP headers
+
+// Rate Limiters — strict in production, generous in development
+// (dev traffic comes from one IP with multiple test accounts and hits the API constantly)
+const isProduction = process.env.NODE_ENV === 'production';
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isProduction ? 5 : 100,
+  message: 'Too many authentication attempts, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const otpLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: isProduction ? 3 : 50,
+  message: 'Too many OTP requests, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: isProduction ? 100 : 5000,
+  message: 'Too many requests, please try again later',
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: corsOrigins,
+  credentials: true
+}));
+
+// Security headers
+app.use((req, res, next) => {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  res.setHeader('X-XSS-Protection', '1; mode=block');
+  res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https: wss:; media-src 'self' https: data:;");
+  next();
+});
+
 app.use(express.json());
 
+// Serve the built React client (copied to server/public by deploy-prep).
+// In development this directory doesn't exist and this is a no-op.
+app.use(express.static(path.join(__dirname, 'public')));
+
+// Initialize database connection status
+let dbConnected = false;
+
+// Track online users
+const onlineUsers = new Set();
+
+// Database connection status check middleware
+app.use((req, res, next) => {
+  if (!dbConnected && req.path !== '/') {
+    return res.status(503).json({ message: 'Database connection unavailable' });
+  }
+  next();
+});
+
 // MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/messenger')
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.log('MongoDB connection error:', err));
+mongoose.connect(process.env.MONGODB_URI)
+  .then(() => {
+    dbConnected = true;
+    console.log('MongoDB connected');
+  })
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+    process.exit(1);
+  });
 
 // Routes
 app.get('/', (req, res) => {
   res.json({ message: 'Nexus API running' });
 });
 
+// Get online users
+app.get('/api/users/online', (req, res) => {
+  res.json({ onlineUsers: Array.from(onlineUsers) });
+});
+
+// Apply rate limiting to auth endpoints (stricter limits)
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/send-otp', otpLimiter);
+app.use('/api/auth/verify-otp-signup', otpLimiter);
+
+// Apply general API rate limiting
+app.use('/api/', apiLimiter);
+
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
+
+// SPA fallback: deep links like /chat or /login must serve index.html
+// (API and socket paths fall through to their own handlers/404s)
+app.get('*', (req, res, next) => {
+  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
+    return next();
+  }
+  res.sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
+    if (err) next(); // no build present (development) — fall through
+  });
+});
 
 // Socket.io Middleware - Verify JWT
 io.use((socket, next) => {
@@ -45,7 +174,7 @@ io.use((socket, next) => {
       return next(new Error('Authentication token required'));
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_here');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
     socket.userId = decoded.userId;
     next();
   } catch (error) {
@@ -57,61 +186,163 @@ io.use((socket, next) => {
 io.on('connection', (socket) => {
   console.log(`User connected: ${socket.userId}`);
 
+  // Add user to online users set
+  onlineUsers.add(socket.userId);
+
+  // Personal room for cross-conversation notifications (unread badges etc.)
+  socket.join(`user:${socket.userId}`);
+  console.log(`Online users: ${Array.from(onlineUsers).join(', ')}`);
+
   // User comes online
   socket.emit('user:online', { userId: socket.userId });
   socket.broadcast.emit('user:online', { userId: socket.userId });
 
   // Join conversation room
-  socket.on('conversation:join', (conversationId) => {
-    socket.join(`conversation:${conversationId}`);
-    console.log(`User ${socket.userId} joined conversation ${conversationId}`);
+  socket.on('conversation:join', async (conversationId) => {
+    try {
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
+        console.log(`🚫 JOIN DENIED: user ${socket.userId} → conversation ${conversationId} (found: ${!!conversation})`);
+        socket.emit('error', { message: 'Unauthorized to join this conversation' });
+        return;
+      }
+      socket.join(`conversation:${conversationId}`);
+      const room = io.sockets.adapter.rooms.get(`conversation:${conversationId}`);
+      console.log(`✓ JOIN: user ${socket.userId} → conversation ${conversationId} (room size now: ${room?.size || 0})`);
+    } catch (error) {
+      console.error('Error joining conversation:', error);
+      socket.emit('error', { message: 'Failed to join conversation' });
+    }
   });
 
   // Leave conversation room
-  socket.on('conversation:leave', (conversationId) => {
-    socket.leave(`conversation:${conversationId}`);
+  socket.on('conversation:leave', async (conversationId) => {
+    try {
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
+        return;
+      }
+      socket.leave(`conversation:${conversationId}`);
+    } catch (error) {
+      console.error('Error leaving conversation:', error);
+    }
   });
 
   // Handle incoming message
-  socket.on('message:send', async (data) => {
+  socket.on('message:send', async (data, callback) => {
     try {
-      const { conversationId, content } = data;
+      const { conversationId, content, fileUrl, fileName, fileSize, type, s3Key } = data;
 
-      // Create and save message
+      // Validate required fields
+      if (!conversationId || !content) {
+        const error = 'Conversation ID and content are required';
+        console.error(error);
+        if (callback) callback({ success: false, error });
+        return;
+      }
+
+      // Verify conversation exists and user is a participant
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation) {
+        const error = 'Conversation not found';
+        console.error(error);
+        if (callback) callback({ success: false, error });
+        return;
+      }
+
+      if (!conversation.participants || !conversation.participants.some(p => p && p.toString() === socket.userId.toString())) {
+        const error = 'Not authorized to send message in this conversation';
+        console.error(error);
+        if (callback) callback({ success: false, error });
+        return;
+      }
+
+      // Create and save message; participants who are online right now
+      // count as "delivered" immediately
+      const deliveredTo = conversation.participants.filter(p =>
+        String(p) !== String(socket.userId) && onlineUsers.has(String(p))
+      );
+
       const message = new Message({
         conversation: conversationId,
         sender: socket.userId,
         content,
-        deliveredTo: []
+        deliveredTo,
+        ...(fileUrl && { fileUrl, fileName, fileSize, type, s3Key })
       });
       await message.save();
-      await message.populate('sender', '-password');
+      await message.populate('sender', '_id name email publicKey avatar status isOnline');
+
+      // Update conversation's lastMessage
+      await Conversation.findByIdAndUpdate(conversationId, {
+        lastMessage: message._id,
+        lastMessageAt: new Date()
+      });
 
       // Broadcast to conversation room
-      io.to(`conversation:${conversationId}`).emit('message:receive', {
+      const broadcastData = {
         _id: message._id,
         conversation: conversationId,
         sender: message.sender,
         content: message.content,
-        createdAt: message.createdAt
+        createdAt: message.createdAt,
+        deliveredTo: message.deliveredTo,
+        readBy: message.readBy
+      };
+
+      if (fileUrl) {
+        broadcastData.fileUrl = message.fileUrl;
+        broadcastData.fileName = message.fileName;
+        broadcastData.fileSize = message.fileSize;
+        broadcastData.type = message.type;
+      }
+
+      const room = io.sockets.adapter.rooms.get(`conversation:${conversationId}`);
+      console.log(`📤 BROADCAST: conversation ${conversationId} | sender ${socket.userId} | sockets in room: ${room?.size || 0}`);
+
+      io.to(`conversation:${conversationId}`).emit('message:receive', broadcastData);
+
+      // Notify other participants personally (drives unread badges when the
+      // recipient doesn't have this conversation open / joined)
+      conversation.participants.forEach(participantId => {
+        if (String(participantId) !== String(socket.userId)) {
+          io.to(`user:${participantId}`).emit('conversation:notify', broadcastData);
+        }
       });
+
+      // Acknowledge successful message send
+      if (callback) callback({ success: true, messageId: message._id });
     } catch (error) {
       console.error('Error sending message:', error);
-      socket.emit('error', { message: 'Failed to send message' });
+      const errorResponse = { success: false, error: 'Failed to send message' };
+      if (callback) callback(errorResponse);
+      socket.emit('message:error', errorResponse);
     }
   });
 
   // Typing indicator
-  socket.on('typing:start', (conversationId) => {
-    socket.to(`conversation:${conversationId}`).emit('typing:start', {
-      userId: socket.userId
-    });
+  socket.on('typing:start', async (conversationId) => {
+    try {
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
+        return;
+      }
+      socket.to(`conversation:${conversationId}`).emit('typing:start', { userId: socket.userId });
+    } catch (error) {
+      console.error('Error emitting typing:start:', error);
+    }
   });
 
-  socket.on('typing:stop', (conversationId) => {
-    socket.to(`conversation:${conversationId}`).emit('typing:stop', {
-      userId: socket.userId
-    });
+  socket.on('typing:stop', async (conversationId) => {
+    try {
+      const conversation = await Conversation.findById(conversationId);
+      if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
+        return;
+      }
+      socket.to(`conversation:${conversationId}`).emit('typing:stop', { userId: socket.userId });
+    } catch (error) {
+      console.error('Error emitting typing:stop:', error);
+    }
   });
 
   // Message read receipt
@@ -133,6 +364,8 @@ io.on('connection', (socket) => {
   // User goes offline
   socket.on('disconnect', () => {
     console.log(`User disconnected: ${socket.userId}`);
+    onlineUsers.delete(socket.userId);
+    console.log(`Online users: ${Array.from(onlineUsers).join(', ')}`);
     socket.broadcast.emit('user:offline', { userId: socket.userId });
   });
 });

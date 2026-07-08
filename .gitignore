@@ -9,28 +9,24 @@ yarn-error.log*
 .env.local
 .env.*.local
 
-# Build outputs
-build/
-dist/
-.next/
-out/
-
 # IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-*~
-.DS_Store
 
-# Testing
-coverage/
-.nyc_output/
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+dist/
+build/
+server/public/
+
+# Elastic Beanstalk CLI
+.elasticbeanstalk/
 
 # Logs
 logs/
 *.log
-
-# Temporary
-.temp/
-tmp/

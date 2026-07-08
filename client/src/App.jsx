@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ProtectedRoute } from './components/ProtectedRoute';
+import { ErrorBoundary } from './components/ErrorBoundary';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
 import { Home } from './pages/Home';
@@ -8,8 +9,9 @@ import { Chat } from './pages/Chat';
 
 function App() {
   return (
-    <Router>
-      <AuthProvider>
+    <ErrorBoundary>
+      <Router>
+        <AuthProvider>
         <Routes>
           <Route path="/login" element={<Login />} />
           <Route path="/signup" element={<Signup />} />
@@ -33,6 +35,7 @@ function App() {
         </Routes>
       </AuthProvider>
     </Router>
+    </ErrorBoundary>
   );
 }
 

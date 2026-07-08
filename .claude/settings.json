@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm *)",
+      "Bash(node *)",
+      "Bash(git *)",
+      "Bash(cd *)",
+      "Bash(ls *)",
+      "Bash(pwd)",
+      "Bash(cat *)",
+      "Edit(server/**)",
+      "Edit(client/**)",
+      "Edit(.claude/**)",
+      "Read(**)",
+      "Glob(**)"
+    ],
+    "deny": [
+      "Bash(rm -rf *)",
+      "Bash(sudo *)",
+      "Bash(drop *)",
+      "Bash(delete *)",
+      "Edit(.env)"
+    ]
+  },
+  "additionalDirectories": [
+    "c:\\Users\\charan tej\\OneDrive\\Desktop\\messenger"
+  ]
+}

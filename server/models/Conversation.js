@@ -34,6 +34,10 @@ const conversationSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   },
+  deletedFor: [{
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'User'
+  }],
   createdAt: {
     type: Date,
     default: Date.now
@@ -43,5 +47,10 @@ const conversationSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Add indexes for performance
+conversationSchema.index({ participants: 1 });
+conversationSchema.index({ createdAt: -1 });
+conversationSchema.index({ lastMessageAt: -1 });
 
 export default mongoose.model('Conversation', conversationSchema);
