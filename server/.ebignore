@@ -1,0 +1,4 @@
+# Deployed via file-system copy (presence of this file makes EB CLI ignore git
+# state, so the untracked public/ build output gets included in the bundle)
+node_modules/
+.env

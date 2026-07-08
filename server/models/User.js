@@ -15,7 +15,11 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true
+    default: null
+  },
+  isEmailVerified: {
+    type: Boolean,
+    default: false
   },
   avatar: {
     type: String,
@@ -25,10 +29,29 @@ const userSchema = new mongoose.Schema({
     type: String,
     default: 'Hey there! I\'m using Nexus'
   },
+  publicKey: {
+    type: String,
+    default: null
+  },
+  // Encryption secret key, stored so users can decrypt from any device/session.
+  // select:false keeps it out of ALL queries and populates (participants,
+  // message senders, search results) unless explicitly requested with '+secretKey'.
+  secretKey: {
+    type: String,
+    default: null,
+    select: false
+  },
   contacts: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'
   }],
+  // Personal nicknames for contacts, keyed by contact user id.
+  // Only visible to this user — the contact keeps their real name for others.
+  contactNicknames: {
+    type: Map,
+    of: String,
+    default: {}
+  },
   blockedUsers: [{
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User'

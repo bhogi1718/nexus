@@ -1,6 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
 import { initializeSocket, disconnectSocket } from '../services/socket';
+import { storeKeys } from '../services/cryptoService';
 
 export const AuthContext = createContext();
 
@@ -15,6 +16,11 @@ export const AuthProvider = ({ children }) => {
         try {
           const response = await authAPI.getProfile();
           setUser(response.data.user);
+          // Restore this user's encryption keys from the server so decryption
+          // works after refresh, on new devices, and when switching accounts
+          if (response.data.user.publicKey && response.data.user.secretKey) {
+            storeKeys(response.data.user.publicKey, response.data.user.secretKey);
+          }
           initializeSocket(token);
         } catch (error) {
           localStorage.removeItem('token');
@@ -45,6 +51,14 @@ export const AuthProvider = ({ children }) => {
     return response.data;
   };
 
+  // For OTP flows where the API call happens in the page component
+  const loginWithToken = (newToken, newUser) => {
+    localStorage.setItem('token', newToken);
+    setToken(newToken);
+    setUser(newUser);
+    initializeSocket(newToken);
+  };
+
   const logout = async () => {
     try {
       await authAPI.logout();
@@ -58,7 +72,7 @@ export const AuthProvider = ({ children }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, token, register, login, logout }}>
+    <AuthContext.Provider value={{ user, loading, token, register, login, loginWithToken, logout }}>
       {children}
     </AuthContext.Provider>
   );

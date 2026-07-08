@@ -1,32 +1,49 @@
 import multer from 'multer';
 import path from 'path';
-import { fileURLToPath } from 'url';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-
-// Configure multer for temporary file storage
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, path.join(__dirname, '../uploads'));
-  },
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-    cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-  }
-});
+// Use memory storage to keep files in RAM until uploaded to Cloudinary
+const storage = multer.memoryStorage();
 
 const fileFilter = (req, file, cb) => {
-  // Allowed file types
-  const allowedTypes = /jpeg|jpg|png|gif|pdf|doc|docx|txt|mp3|mp4|webm/;
-  const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-  const mimetype = allowedTypes.test(file.mimetype);
+  // Allowed MIME types and extensions with mapping
+  const allowedFileTypes = {
+    'image/jpeg': ['.jpeg', '.jpg'],
+    'image/png': ['.png'],
+    'image/gif': ['.gif'],
+    'image/webp': ['.webp'],
+    'application/pdf': ['.pdf'],
+    'application/msword': ['.doc'],
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
+    'text/plain': ['.txt'],
+    'audio/mpeg': ['.mp3'],
+    'audio/wav': ['.wav'],
+    'audio/ogg': ['.ogg'],
+    'video/mp4': ['.mp4'],
+    'video/webm': ['.webm']
+  };
 
-  if (mimetype && extname) {
-    return cb(null, true);
-  } else {
-    cb(new Error('Invalid file type. Only image, document, and media files are allowed.'));
+  const ext = path.extname(file.originalname).toLowerCase();
+  const mimeAllowedExts = allowedFileTypes[file.mimetype] || [];
+  const mimeSupported = Object.keys(allowedFileTypes).includes(file.mimetype);
+
+  // Check if MIME type is supported
+  if (!mimeSupported) {
+    return cb(new Error(`Unsupported file type: ${file.mimetype}`));
   }
+
+  // Check if extension matches MIME type
+  if (!mimeAllowedExts.includes(ext)) {
+    return cb(new Error(`File extension ${ext} does not match MIME type ${file.mimetype}`));
+  }
+
+  // Additional security: reject files with multiple extensions (e.g., file.doc.exe)
+  const fileName = path.basename(file.originalname);
+  const parts = fileName.split('.');
+  if (parts.length > 2) {
+    console.warn(`Suspicious file with multiple extensions detected: ${file.originalname}`);
+  }
+
+  cb(null, true);
 };
 
 export const upload = multer({
