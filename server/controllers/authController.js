@@ -1,19 +1,169 @@
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
+import { generateAndSaveOTP, verifyOTP } from '../services/emailOtpService.js';
 
 const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET || 'your_jwt_secret_here', {
+  return jwt.sign({ userId }, process.env.JWT_SECRET, {
     expiresIn: '7d'
   });
 };
 
+// Send OTP for signup
+export const sendOTP = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    // Check if email already exists and is verified
+    const existingUser = await User.findOne({ email });
+    if (existingUser && existingUser.isEmailVerified) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
+
+    // Generate and send OTP
+    await generateAndSaveOTP(email);
+
+    res.status(200).json({ message: 'OTP sent successfully', email });
+  } catch (error) {
+    console.error('Send OTP error:', error);
+    res.status(500).json({ message: 'Failed to send OTP', error: error.message });
+  }
+};
+
+// Verify OTP and register user (Passwordless)
+export const verifyOTPAndRegister = async (req, res) => {
+  try {
+    const { name, email, otp, publicKey, secretKey } = req.body;
+
+    // Validate inputs
+    if (!name || !email || !otp || !publicKey) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    // Verify OTP
+    const isOTPValid = await verifyOTP(email, otp);
+    if (!isOTPValid) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    // Check if email already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser && existingUser.isEmailVerified) {
+      return res.status(400).json({ message: 'Email already registered' });
+    }
+
+    // Create new user (no password)
+    const newUser = new User({
+      name,
+      email,
+      publicKey,
+      secretKey: secretKey || null,
+      isEmailVerified: true
+    });
+
+    await newUser.save();
+
+    const token = generateToken(newUser._id);
+
+    res.status(201).json({
+      message: 'User registered successfully',
+      token,
+      user: {
+        id: newUser._id,
+        name: newUser.name,
+        email: newUser.email,
+        avatar: newUser.avatar,
+        status: newUser.status
+      }
+    });
+  } catch (error) {
+    console.error('Verify OTP and register error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Send OTP for login
+export const sendOTPLogin = async (req, res) => {
+  try {
+    const { email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
+
+    // Check if email exists
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: 'Email not registered' });
+    }
+
+    // Generate and send OTP
+    await generateAndSaveOTP(email);
+
+    res.status(200).json({ message: 'OTP sent successfully', email });
+  } catch (error) {
+    console.error('Send OTP login error:', error);
+    res.status(500).json({ message: 'Failed to send OTP', error: error.message });
+  }
+};
+
+// Verify OTP and login (Passwordless)
+export const verifyOTPAndLogin = async (req, res) => {
+  try {
+    const { email, otp } = req.body;
+
+    if (!email || !otp) {
+      return res.status(400).json({ message: 'Email and OTP are required' });
+    }
+
+    // Verify OTP
+    const isOTPValid = await verifyOTP(email, otp);
+    if (!isOTPValid) {
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    }
+
+    // Find user (explicitly include encryption keys for this device)
+    const user = await User.findOne({ email }).select('+secretKey');
+    if (!user) {
+      return res.status(400).json({ message: 'Email not found' });
+    }
+
+    const token = generateToken(user._id);
+
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        status: user.status,
+        publicKey: user.publicKey,
+        secretKey: user.secretKey
+      }
+    });
+  } catch (error) {
+    console.error('Verify OTP and login error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Legacy email+password signup (kept for backward compatibility)
 export const register = async (req, res) => {
   try {
-    const { name, email, password, confirmPassword } = req.body;
+    const { name, email, password, confirmPassword, publicKey } = req.body;
 
     if (!name || !email || !password || !confirmPassword) {
       return res.status(400).json({ message: 'All fields are required' });
+    }
+
+    if (!publicKey) {
+      return res.status(400).json({ message: 'Encryption key required' });
     }
 
     if (password !== confirmPassword) {
@@ -35,7 +185,8 @@ export const register = async (req, res) => {
     const newUser = new User({
       name,
       email,
-      password: hashedPassword
+      password: hashedPassword,
+      publicKey
     });
 
     await newUser.save();
@@ -54,7 +205,8 @@ export const register = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Auth error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -90,7 +242,8 @@ export const login = async (req, res) => {
       }
     });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Auth error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
 
@@ -100,12 +253,59 @@ export const logout = (req, res) => {
 
 export const getProfile = async (req, res) => {
   try {
-    const user = await User.findById(req.userId).select('-password');
+    // Include the user's own encryption keys so any device can restore them
+    const user = await User.findById(req.userId).select('+secretKey');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    res.status(200).json({ user });
+    res.status(200).json({
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        status: user.status,
+        publicKey: user.publicKey,
+        secretKey: user.secretKey
+      }
+    });
   } catch (error) {
-    res.status(500).json({ message: 'Server error', error: error.message });
+    console.error('Auth error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Sync this device's keypair to the server (used when the server has none yet)
+export const updatePublicKey = async (req, res) => {
+  try {
+    const { publicKey, secretKey } = req.body;
+
+    if (!publicKey) {
+      return res.status(400).json({ message: 'Public key is required' });
+    }
+
+    const update = { publicKey };
+    if (secretKey) {
+      update.secretKey = secretKey;
+    }
+
+    const user = await User.findByIdAndUpdate(
+      req.userId,
+      update,
+      { new: true }
+    );
+
+    res.status(200).json({
+      message: 'Keys updated successfully',
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        publicKey: user.publicKey
+      }
+    });
+  } catch (error) {
+    console.error('Update keys error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 };
