@@ -4,6 +4,7 @@ import Message from '../models/Message.js';
 import User from '../models/User.js';
 import { uploadToS3, downloadFromS3, deleteFromS3, getS3Client, getBucketName } from '../services/s3Storage.js';
 import { getIO } from '../services/socketRegistry.js';
+import { sanitizeMessage } from '../services/sanitizationService.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
 
 // Create or get private conversation
@@ -232,11 +233,13 @@ export const sendMessage = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to send message' });
     }
 
+    const sanitizedContent = sanitizeMessage(content);
+
     const message = new Message({
       conversation: conversationId,
       sender: req.userId,
       type,
-      content,
+      content: sanitizedContent,
       deliveredTo: conversation.participants.filter(id => id.toString() !== req.userId.toString())
     });
 

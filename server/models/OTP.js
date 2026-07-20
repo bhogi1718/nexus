@@ -17,7 +17,7 @@ const otpSchema = new mongoose.Schema({
   },
   maxAttempts: {
     type: Number,
-    default: 3
+    default: 5
   },
   expiresAt: {
     type: Date,
@@ -29,5 +29,8 @@ const otpSchema = new mongoose.Schema({
     default: Date.now
   }
 });
+
+// Compound index for account-level lockout tracking
+otpSchema.index({ email: 1, createdAt: -1 });
 
 export default mongoose.model('OTP', otpSchema);
