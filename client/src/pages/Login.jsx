@@ -43,7 +43,8 @@ export const Login = () => {
         otp: formData.otp
       });
       // Update auth context so ProtectedRoute lets us through immediately
-      loginWithToken(response.data.token, response.data.user);
+      const { accessToken, refreshToken } = response.data;
+      loginWithToken(accessToken, refreshToken, response.data.user);
 
       // Restore encryption keys: server is the source of truth so messages
       // decrypt on any device/session. Only generate if the server has none.
@@ -142,7 +143,7 @@ export const Login = () => {
             <form onSubmit={handleVerifyOTPAndLogin} className="space-y-4">
               <div className="p-4 bg-blue-50 rounded-lg mb-4">
                 <p className="text-sm text-blue-900">Verification code sent to <strong>{formData.email}</strong></p>
-                <p className="text-xs text-blue-700 mt-2">Check your inbox for the 4-digit code</p>
+                <p className="text-xs text-blue-700 mt-2">Check your inbox for the 6-digit code</p>
               </div>
 
               <div>
@@ -153,11 +154,11 @@ export const Login = () => {
                   value={formData.otp}
                   onChange={handleChange}
                   className="auth-input text-center text-2xl tracking-widest"
-                  placeholder="0000"
-                  maxLength="4"
+                  placeholder="000000"
+                  maxLength="6"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">4-digit code from email</p>
+                <p className="text-xs text-gray-500 mt-1">6-digit code from email</p>
               </div>
 
               <div className="flex gap-3">
