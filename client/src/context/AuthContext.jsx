@@ -74,7 +74,6 @@ export const AuthProvider = ({ children }) => {
     disconnectSocket();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
-    localStorage.removeItem('csrfToken');
     setAccessToken(null);
     setUser(null);
   };

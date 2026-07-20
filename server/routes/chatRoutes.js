@@ -27,28 +27,28 @@ const csrfProtection = csrf({ cookie: true });
 router.use(verifyToken);
 
 // Conversation routes
-router.post('/conversation', csrfProtection, getOrCreateConversation);
+router.post('/conversation', getOrCreateConversation);
 router.get('/conversations', getConversations);
 router.get('/conversation/:conversationId', getConversationDetails);
-router.delete('/conversation/:conversationId', csrfProtection, deleteConversation);
+router.delete('/conversation/:conversationId', deleteConversation);
 
 // Message routes
 router.get('/conversation/:conversationId/messages', getMessages);
-router.post('/conversation/:conversationId/message', csrfProtection, sendMessage);
-router.put('/message/:messageId/read', csrfProtection, markAsRead);
-router.put('/conversation/:conversationId/read', csrfProtection, markConversationRead);
+router.post('/conversation/:conversationId/message', sendMessage);
+router.put('/message/:messageId/read', markAsRead);
+router.put('/conversation/:conversationId/read', markConversationRead);
 
 // Search (contacts only)
 router.get('/search/users', searchUsers);
 
 // Contacts
 router.get('/contacts', getContacts);
-router.post('/contacts', csrfProtection, addContact);
-router.delete('/contacts/:contactId', csrfProtection, removeContact);
-router.put('/contacts/:contactId/nickname', csrfProtection, setContactNickname);
+router.post('/contacts', addContact);
+router.delete('/contacts/:contactId', removeContact);
+router.put('/contacts/:contactId/nickname', setContactNickname);
 
 // Media upload and download
-router.post('/upload', csrfProtection, upload.single('file'), uploadMedia);
+router.post('/upload', upload.single('file'), uploadMedia);
 router.get('/download/:messageId', downloadFile);
 
 export default router;

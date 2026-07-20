@@ -110,8 +110,18 @@ app.use(cors({
 // Cookie parser for CSRF protection
 app.use(cookieParser());
 
-// CSRF protection using cookies (stores token in XSRF-TOKEN cookie)
+// CSRF protection: skip for JWT-authenticated requests (API endpoints)
+// CSRF is mainly for form attacks; JWT provides sufficient protection for APIs
 const csrfProtection = csrf({ cookie: true });
+
+// Middleware to skip CSRF for requests with valid JWT
+const csrfSkipIfAuthed = (req, res, next) => {
+  if (req.headers.authorization?.startsWith('Bearer ')) {
+    return next(); // Skip CSRF for authenticated requests
+  }
+  csrfProtection(req, res, next);
+};
+
 app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
