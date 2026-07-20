@@ -12,7 +12,8 @@
       "Edit(client/**)",
       "Edit(.claude/**)",
       "Read(**)",
-      "Glob(**)"
+      "Glob(**)",
+      "Bash(git add *)"
     ],
     "deny": [
       "Bash(rm -rf *)",
