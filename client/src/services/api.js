@@ -3,8 +3,7 @@ import axios from 'axios';
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
-  baseURL: API_URL,
-  withCredentials: true // Enable cookies for CSRF token
+  baseURL: API_URL
 });
 
 let isRefreshing = false;
@@ -28,14 +27,6 @@ api.interceptors.request.use(
     const accessToken = localStorage.getItem('accessToken');
     if (accessToken) {
       config.headers.Authorization = `Bearer ${accessToken}`;
-    }
-
-    // Add CSRF token to state-changing requests
-    if (['post', 'put', 'delete'].includes(config.method)) {
-      const csrfToken = localStorage.getItem('csrfToken');
-      if (csrfToken) {
-        config.headers['X-CSRF-Token'] = csrfToken;
-      }
     }
 
     return config;
