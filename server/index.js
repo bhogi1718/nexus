@@ -110,8 +110,8 @@ app.use(cors({
 // Cookie parser for CSRF protection
 app.use(cookieParser());
 
-// CSRF protection (except for API calls with JWT)
-const csrfProtection = csrf({ cookie: false });
+// CSRF protection using cookies (stores token in XSRF-TOKEN cookie)
+const csrfProtection = csrf({ cookie: true });
 app.get('/api/csrf-token', csrfProtection, (req, res) => {
   res.json({ csrfToken: req.csrfToken() });
 });
