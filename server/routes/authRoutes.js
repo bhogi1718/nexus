@@ -6,7 +6,7 @@ import { verifyToken } from '../middleware/auth.js';
 import { verifyRefreshToken, generateTokens } from '../services/tokenService.js';
 
 const router = express.Router();
-const csrfProtection = csrf({ cookie: false });
+const csrfProtection = csrf({ cookie: true });
 
 // Validation middleware
 const validateEmail = body('email').isEmail().normalizeEmail().withMessage('Valid email is required');

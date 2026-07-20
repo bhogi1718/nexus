@@ -15,10 +15,13 @@ function App() {
     const fetchCsrfToken = async () => {
       try {
         const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
-        const { data } = await axios.get(`${API_URL}/csrf-token`);
-        localStorage.setItem('csrfToken', data.csrfToken);
+        const response = await axios.get(`${API_URL}/csrf-token`, {
+          withCredentials: true // Important: receive the cookie
+        });
+        localStorage.setItem('csrfToken', response.data.csrfToken);
       } catch (error) {
         console.error('Failed to fetch CSRF token:', error);
+        // Continue anyway - some requests might not need CSRF
       }
     };
 
