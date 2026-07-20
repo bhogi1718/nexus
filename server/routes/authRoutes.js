@@ -24,7 +24,6 @@ const handleValidationErrors = (req, res, next) => {
 
 // Email OTP Signup - Send OTP
 router.post('/send-otp',
-  csrfProtection,
   validateEmail,
   handleValidationErrors,
   sendOTP
@@ -32,7 +31,6 @@ router.post('/send-otp',
 
 // Email OTP Signup - Verify OTP and Register
 router.post('/verify-otp-signup',
-  csrfProtection,
   validateName,
   validateEmail,
   body('otp').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
@@ -43,7 +41,6 @@ router.post('/verify-otp-signup',
 
 // Email OTP Login - Send OTP
 router.post('/send-otp-login',
-  csrfProtection,
   validateEmail,
   handleValidationErrors,
   sendOTPLogin
@@ -51,7 +48,6 @@ router.post('/send-otp-login',
 
 // Email OTP Login - Verify OTP and Login
 router.post('/verify-otp-login',
-  csrfProtection,
   validateEmail,
   body('otp').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
   handleValidationErrors,
@@ -60,7 +56,6 @@ router.post('/verify-otp-login',
 
 // Legacy email+password signup (backward compatibility)
 router.post('/register',
-  csrfProtection,
   validateName,
   validateEmail,
   validatePassword,
@@ -72,7 +67,6 @@ router.post('/register',
 
 // Legacy email+password login (backward compatibility)
 router.post('/login',
-  csrfProtection,
   validateEmail,
   validatePassword,
   handleValidationErrors,
