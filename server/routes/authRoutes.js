@@ -1,9 +1,12 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
+import csrf from 'csurf';
 import { register, login, logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updatePublicKey } from '../controllers/authController.js';
 import { verifyToken } from '../middleware/auth.js';
+import { verifyRefreshToken, generateTokens } from '../services/tokenService.js';
 
 const router = express.Router();
+const csrfProtection = csrf({ cookie: false });
 
 // Validation middleware
 const validateEmail = body('email').isEmail().normalizeEmail().withMessage('Valid email is required');
@@ -21,6 +24,7 @@ const handleValidationErrors = (req, res, next) => {
 
 // Email OTP Signup - Send OTP
 router.post('/send-otp',
+  csrfProtection,
   validateEmail,
   handleValidationErrors,
   sendOTP
@@ -28,9 +32,10 @@ router.post('/send-otp',
 
 // Email OTP Signup - Verify OTP and Register
 router.post('/verify-otp-signup',
+  csrfProtection,
   validateName,
   validateEmail,
-  body('otp').isLength({ min: 4, max: 4 }).withMessage('OTP must be 4 digits'),
+  body('otp').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
   body('publicKey').notEmpty().withMessage('Public key is required'),
   handleValidationErrors,
   verifyOTPAndRegister
@@ -38,6 +43,7 @@ router.post('/verify-otp-signup',
 
 // Email OTP Login - Send OTP
 router.post('/send-otp-login',
+  csrfProtection,
   validateEmail,
   handleValidationErrors,
   sendOTPLogin
@@ -45,14 +51,16 @@ router.post('/send-otp-login',
 
 // Email OTP Login - Verify OTP and Login
 router.post('/verify-otp-login',
+  csrfProtection,
   validateEmail,
-  body('otp').isLength({ min: 4, max: 4 }).withMessage('OTP must be 4 digits'),
+  body('otp').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
   handleValidationErrors,
   verifyOTPAndLogin
 );
 
 // Legacy email+password signup (backward compatibility)
 router.post('/register',
+  csrfProtection,
   validateName,
   validateEmail,
   validatePassword,
@@ -64,6 +72,7 @@ router.post('/register',
 
 // Legacy email+password login (backward compatibility)
 router.post('/login',
+  csrfProtection,
   validateEmail,
   validatePassword,
   handleValidationErrors,
@@ -73,5 +82,25 @@ router.post('/login',
 router.post('/logout', verifyToken, logout);
 router.get('/profile', verifyToken, getProfile);
 router.post('/update-public-key', verifyToken, updatePublicKey);
+
+// Refresh token endpoint
+router.post('/refresh', (req, res) => {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) {
+      return res.status(400).json({ message: 'Refresh token is required' });
+    }
+
+    const decoded = verifyRefreshToken(refreshToken);
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
+
+    res.json({
+      accessToken,
+      refreshToken: newRefreshToken
+    });
+  } catch (error) {
+    res.status(401).json({ message: 'Invalid refresh token', error: error.message });
+  }
+});
 
 export default router;
