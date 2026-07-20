@@ -64,6 +64,14 @@ const userSchema = new mongoose.Schema({
     type: Date,
     default: Date.now
   },
+  accountLockoutUntil: {
+    type: Date,
+    default: null
+  },
+  failedOtpAttempts: {
+    type: Number,
+    default: 0
+  },
   createdAt: {
     type: Date,
     default: Date.now

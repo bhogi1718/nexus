@@ -1,13 +1,7 @@
 import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
 import User from '../models/User.js';
 import { generateAndSaveOTP, verifyOTP } from '../services/emailOtpService.js';
-
-const generateToken = (userId) => {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, {
-    expiresIn: '7d'
-  });
-};
+import { generateTokens, verifyRefreshToken } from '../services/tokenService.js';
 
 // Send OTP for signup
 export const sendOTP = async (req, res) => {
@@ -44,10 +38,14 @@ export const verifyOTPAndRegister = async (req, res) => {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
-    // Verify OTP
-    const isOTPValid = await verifyOTP(email, otp);
-    if (!isOTPValid) {
-      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    // Verify OTP (may throw error if account is locked)
+    try {
+      const isOTPValid = await verifyOTP(email, otp);
+      if (!isOTPValid) {
+        return res.status(400).json({ message: 'Invalid or expired OTP' });
+      }
+    } catch (lockoutError) {
+      return res.status(429).json({ message: lockoutError.message });
     }
 
     // Check if email already exists
@@ -67,11 +65,12 @@ export const verifyOTPAndRegister = async (req, res) => {
 
     await newUser.save();
 
-    const token = generateToken(newUser._id);
+    const { accessToken, refreshToken } = generateTokens(newUser._id);
 
     res.status(201).json({
       message: 'User registered successfully',
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: newUser._id,
         name: newUser.name,
@@ -120,10 +119,14 @@ export const verifyOTPAndLogin = async (req, res) => {
       return res.status(400).json({ message: 'Email and OTP are required' });
     }
 
-    // Verify OTP
-    const isOTPValid = await verifyOTP(email, otp);
-    if (!isOTPValid) {
-      return res.status(400).json({ message: 'Invalid or expired OTP' });
+    // Verify OTP (may throw error if account is locked)
+    try {
+      const isOTPValid = await verifyOTP(email, otp);
+      if (!isOTPValid) {
+        return res.status(400).json({ message: 'Invalid or expired OTP' });
+      }
+    } catch (lockoutError) {
+      return res.status(429).json({ message: lockoutError.message });
     }
 
     // Find user (explicitly include encryption keys for this device)
@@ -132,11 +135,12 @@ export const verifyOTPAndLogin = async (req, res) => {
       return res.status(400).json({ message: 'Email not found' });
     }
 
-    const token = generateToken(user._id);
+    const { accessToken, refreshToken } = generateTokens(user._id);
 
     res.status(200).json({
       message: 'Login successful',
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user._id,
         name: user.name,
@@ -191,11 +195,12 @@ export const register = async (req, res) => {
 
     await newUser.save();
 
-    const token = generateToken(newUser._id);
+    const { accessToken, refreshToken } = generateTokens(newUser._id);
 
     res.status(201).json({
       message: 'User registered successfully',
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: newUser._id,
         name: newUser.name,
@@ -228,11 +233,12 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    const token = generateToken(user._id);
+    const { accessToken, refreshToken } = generateTokens(user._id);
 
     res.status(200).json({
       message: 'Login successful',
-      token,
+      accessToken,
+      refreshToken,
       user: {
         id: user._id,
         name: user.name,

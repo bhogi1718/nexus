@@ -16,22 +16,35 @@ import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import csrf from 'csurf';
+import cookieParser from 'cookie-parser';
 import authRoutes from './routes/authRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import Message from './models/Message.js';
 import Conversation from './models/Conversation.js';
 import { setIO } from './services/socketRegistry.js';
+import { sanitizeMessage } from './services/sanitizationService.js';
+import { requestLogger } from './middleware/logging.js';
 
 // Validate required environment variables.
 // AWS keys are NOT required: on EC2/Elastic Beanstalk the SDK uses the
 // instance role automatically; keys are only needed for local development.
-const requiredEnvVars = ['MONGODB_URI', 'JWT_SECRET', 'AWS_S3_BUCKET'];
+const isProduction = process.env.NODE_ENV === 'production';
+const requiredEnvVars = ['JWT_SECRET', 'AWS_S3_BUCKET'];
+if (isProduction) {
+  requiredEnvVars.push('MONGODB_URI');
+}
+
 const missingEnvVars = requiredEnvVars.filter(env => !process.env[env]);
 
 if (missingEnvVars.length > 0) {
   console.error(`❌ Missing required environment variables: ${missingEnvVars.join(', ')}`);
   console.error(`📝 Copy .env.example to .env and fill in the values`);
   process.exit(1);
+}
+
+if (!process.env.MONGODB_URI && !isProduction) {
+  console.warn('⚠️  MONGODB_URI not set — using local MongoDB (development only)');
 }
 
 if (!process.env.AWS_ACCESS_KEY_ID) {
@@ -55,12 +68,14 @@ const io = new Server(httpServer, {
 // Make io available to REST controllers (read receipts etc.)
 setIO(io);
 
+// Logging Middleware - log all requests
+app.use(requestLogger);
+
 // Security Middleware
 app.use(helmet()); // Secure HTTP headers
 
 // Rate Limiters — strict in production, generous in development
 // (dev traffic comes from one IP with multiple test accounts and hits the API constantly)
-const isProduction = process.env.NODE_ENV === 'production';
 
 const authLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
@@ -92,13 +107,23 @@ app.use(cors({
   credentials: true
 }));
 
+// Cookie parser for CSRF protection
+app.use(cookieParser());
+
+// CSRF protection (except for API calls with JWT)
+const csrfProtection = csrf({ cookie: false });
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+
 // Security headers
 app.use((req, res, next) => {
   res.setHeader('X-Content-Type-Options', 'nosniff');
   res.setHeader('X-Frame-Options', 'DENY');
   res.setHeader('X-XSS-Protection', '1; mode=block');
   res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
-  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https: wss:; media-src 'self' https: data:;");
+  res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload');
+  res.setHeader('Content-Security-Policy', "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; font-src 'self'; connect-src 'self' https: wss:; media-src 'self' https: data:; object-src 'none'; frame-src 'none';");
   next();
 });
 
@@ -113,6 +138,39 @@ let dbConnected = false;
 
 // Track online users
 const onlineUsers = new Set();
+
+// Socket.io rate limiting per user per event
+const socketRateLimiters = new Map();
+
+const checkSocketRateLimit = (userId, event, limit, windowMs) => {
+  const key = `${userId}:${event}`;
+  const now = Date.now();
+
+  if (!socketRateLimiters.has(key)) {
+    socketRateLimiters.set(key, { count: 1, resetAt: now + windowMs });
+    return false;
+  }
+
+  const record = socketRateLimiters.get(key);
+  if (now > record.resetAt) {
+    record.count = 1;
+    record.resetAt = now + windowMs;
+    return false;
+  }
+
+  record.count++;
+  return record.count > limit;
+};
+
+// Cleanup old rate limit records every 5 minutes
+setInterval(() => {
+  const now = Date.now();
+  for (const [key, record] of socketRateLimiters.entries()) {
+    if (now > record.resetAt) {
+      socketRateLimiters.delete(key);
+    }
+  }
+}, 5 * 60 * 1000);
 
 // Database connection status check middleware
 app.use((req, res, next) => {
@@ -231,6 +289,13 @@ io.on('connection', (socket) => {
   // Handle incoming message
   socket.on('message:send', async (data, callback) => {
     try {
+      // Rate limit: 10 messages per minute per user
+      if (checkSocketRateLimit(socket.userId, 'message:send', 10, 60000)) {
+        const error = 'Too many messages. Please wait a moment.';
+        if (callback) callback({ success: false, error });
+        return;
+      }
+
       const { conversationId, content, fileUrl, fileName, fileSize, type, s3Key } = data;
 
       // Validate required fields
@@ -240,6 +305,9 @@ io.on('connection', (socket) => {
         if (callback) callback({ success: false, error });
         return;
       }
+
+      // Sanitize message content to prevent XSS
+      const sanitizedContent = sanitizeMessage(content);
 
       // Verify conversation exists and user is a participant
       const conversation = await Conversation.findById(conversationId);
@@ -257,16 +325,20 @@ io.on('connection', (socket) => {
         return;
       }
 
+      // SECURITY: Always use socket.userId as sender (never from client data)
+      // This prevents message spoofing/impersonation attacks
+      const senderId = socket.userId;
+
       // Create and save message; participants who are online right now
       // count as "delivered" immediately
       const deliveredTo = conversation.participants.filter(p =>
-        String(p) !== String(socket.userId) && onlineUsers.has(String(p))
+        String(p) !== String(senderId) && onlineUsers.has(String(p))
       );
 
       const message = new Message({
         conversation: conversationId,
-        sender: socket.userId,
-        content,
+        sender: senderId,
+        content: sanitizedContent,
         deliveredTo,
         ...(fileUrl && { fileUrl, fileName, fileSize, type, s3Key })
       });
@@ -323,6 +395,11 @@ io.on('connection', (socket) => {
   // Typing indicator
   socket.on('typing:start', async (conversationId) => {
     try {
+      // Rate limit: 20 typing events per minute per user
+      if (checkSocketRateLimit(socket.userId, 'typing:start', 20, 60000)) {
+        return;
+      }
+
       const conversation = await Conversation.findById(conversationId);
       if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
         return;
@@ -335,6 +412,11 @@ io.on('connection', (socket) => {
 
   socket.on('typing:stop', async (conversationId) => {
     try {
+      // Rate limit: 20 typing events per minute per user
+      if (checkSocketRateLimit(socket.userId, 'typing:stop', 20, 60000)) {
+        return;
+      }
+
       const conversation = await Conversation.findById(conversationId);
       if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
         return;
@@ -348,6 +430,11 @@ io.on('connection', (socket) => {
   // Message read receipt
   socket.on('message:read', async (messageId) => {
     try {
+      // Rate limit: 50 read receipts per minute per user
+      if (checkSocketRateLimit(socket.userId, 'message:read', 50, 60000)) {
+        return;
+      }
+
       const message = await Message.findById(messageId);
       if (message) {
         const alreadyRead = message.readBy.some(r => r.user.toString() === socket.userId.toString());
