@@ -8,11 +8,11 @@ export const AuthContext = createContext();
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [token, setToken] = useState(localStorage.getItem('token'));
+  const [accessToken, setAccessToken] = useState(localStorage.getItem('accessToken'));
 
   useEffect(() => {
     const checkAuth = async () => {
-      if (token) {
+      if (accessToken) {
         try {
           const response = await authAPI.getProfile();
           setUser(response.data.user);
@@ -21,42 +21,48 @@ export const AuthProvider = ({ children }) => {
           if (response.data.user.publicKey && response.data.user.secretKey) {
             storeKeys(response.data.user.publicKey, response.data.user.secretKey);
           }
-          initializeSocket(token);
+          initializeSocket(accessToken);
         } catch (error) {
-          localStorage.removeItem('token');
-          setToken(null);
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          setAccessToken(null);
         }
       }
       setLoading(false);
     };
 
     checkAuth();
-  }, [token]);
+  }, [accessToken]);
 
   const register = async (data) => {
     const response = await authAPI.register(data);
-    localStorage.setItem('token', response.data.token);
-    setToken(response.data.token);
+    const { accessToken: newAccessToken, refreshToken } = response.data;
+    localStorage.setItem('accessToken', newAccessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+    setAccessToken(newAccessToken);
     setUser(response.data.user);
-    initializeSocket(response.data.token);
+    initializeSocket(newAccessToken);
     return response.data;
   };
 
   const login = async (data) => {
     const response = await authAPI.login(data);
-    localStorage.setItem('token', response.data.token);
-    setToken(response.data.token);
+    const { accessToken: newAccessToken, refreshToken } = response.data;
+    localStorage.setItem('accessToken', newAccessToken);
+    localStorage.setItem('refreshToken', refreshToken);
+    setAccessToken(newAccessToken);
     setUser(response.data.user);
-    initializeSocket(response.data.token);
+    initializeSocket(newAccessToken);
     return response.data;
   };
 
   // For OTP flows where the API call happens in the page component
-  const loginWithToken = (newToken, newUser) => {
-    localStorage.setItem('token', newToken);
-    setToken(newToken);
+  const loginWithToken = (newAccessToken, newRefreshToken, newUser) => {
+    localStorage.setItem('accessToken', newAccessToken);
+    localStorage.setItem('refreshToken', newRefreshToken);
+    setAccessToken(newAccessToken);
     setUser(newUser);
-    initializeSocket(newToken);
+    initializeSocket(newAccessToken);
   };
 
   const logout = async () => {
@@ -66,13 +72,15 @@ export const AuthProvider = ({ children }) => {
       console.log('Logout error:', error);
     }
     disconnectSocket();
-    localStorage.removeItem('token');
-    setToken(null);
+    localStorage.removeItem('accessToken');
+    localStorage.removeItem('refreshToken');
+    localStorage.removeItem('csrfToken');
+    setAccessToken(null);
     setUser(null);
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, token, register, login, loginWithToken, logout }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, register, login, loginWithToken, logout }}>
       {children}
     </AuthContext.Provider>
   );
