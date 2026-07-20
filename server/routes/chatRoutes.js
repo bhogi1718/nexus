@@ -21,7 +21,7 @@ import { verifyToken } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 
 const router = express.Router();
-const csrfProtection = csrf({ cookie: false });
+const csrfProtection = csrf({ cookie: true });
 
 // All routes require authentication
 router.use(verifyToken);
