@@ -24,7 +24,9 @@ export class Message {
   }
 
   static async findById(messageId) {
-    return await db.get(TABLES.MESSAGES, { messageId });
+    // messageId is not the primary key; scan for it
+    const messages = await db.scan(TABLES.MESSAGES, 'messageId = :mid', {}, { ':mid': messageId });
+    return messages[0] || null;
   }
 
   static async findByConversation(conversationId, limit = 20, lastKey = null) {
@@ -73,8 +75,11 @@ export class Message {
   }
 
   static async update(messageId, updates) {
-    updates.updatedAt = new Date().toISOString();
-    return await db.update(TABLES.MESSAGES, { messageId }, updates);
+    const message = await this.findById(messageId);
+    if (!message) throw new Error('Message not found');
+
+    const updated = { ...message, ...updates, updatedAt: new Date().toISOString() };
+    return await db.put(TABLES.MESSAGES, updated);
   }
 
   static async markAsRead(messageId, userId) {
@@ -109,9 +114,9 @@ export class Message {
       messages = await db.scan(TABLES.MESSAGES);
     }
 
-    // Delete each message
+    // Delete each message using composite key
     for (const msg of messages) {
-      await db.delete(TABLES.MESSAGES, { messageId: msg.messageId });
+      await db.delete(TABLES.MESSAGES, { conversationId: msg.conversationId, createdAt: msg.createdAt });
     }
 
     return { deletedCount: messages.length };
