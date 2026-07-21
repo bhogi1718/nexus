@@ -254,7 +254,7 @@ io.on('connection', (socket) => {
   socket.on('conversation:join', async (conversationId) => {
     try {
       const conversation = await Conversation.findById(conversationId);
-      if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
+      if (!conversation || !conversation.participants.includes(socket.userId)) {
         console.log(`🚫 JOIN DENIED: user ${socket.userId} → conversation ${conversationId} (found: ${!!conversation})`);
         socket.emit('error', { message: 'Unauthorized to join this conversation' });
         return;
@@ -272,7 +272,7 @@ io.on('connection', (socket) => {
   socket.on('conversation:leave', async (conversationId) => {
     try {
       const conversation = await Conversation.findById(conversationId);
-      if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
+      if (!conversation || !conversation.participants.includes(socket.userId)) {
         return;
       }
       socket.leave(`conversation:${conversationId}`);
@@ -327,31 +327,40 @@ io.on('connection', (socket) => {
       // Create and save message; participants who are online right now
       // count as "delivered" immediately
       const deliveredTo = conversation.participants.filter(p =>
-        String(p) !== String(senderId) && onlineUsers.has(String(p))
+        p !== senderId && onlineUsers.has(p)
       );
 
-      const message = new Message({
-        conversation: conversationId,
+      const message = await Message.create({
+        conversationId,
         sender: senderId,
+        type: type || 'text',
         content: sanitizedContent,
         deliveredTo,
-        ...(fileUrl && { fileUrl, fileName, fileSize, type, s3Key })
+        ...(fileUrl && { fileUrl, fileName, fileSize, s3Key })
       });
-      await message.save();
-      await message.populate('sender', '_id name email publicKey avatar status isOnline');
+
+      // Get sender details for broadcast
+      const sender = await User.findById(senderId);
 
       // Update conversation's lastMessage
-      await Conversation.findByIdAndUpdate(conversationId, {
-        lastMessage: message._id,
-        lastMessageAt: new Date()
+      await Conversation.update(conversationId, {
+        lastMessage: message.messageId,
+        lastMessageAt: new Date().toISOString()
       });
 
       // Broadcast to conversation room
       const broadcastData = {
-        _id: message._id,
-        conversation: conversationId,
-        sender: message.sender,
+        messageId: message.messageId,
+        conversationId,
+        sender: sender ? {
+          userId: sender.userId,
+          name: sender.name,
+          email: sender.email,
+          avatar: sender.avatar,
+          status: sender.status
+        } : { userId: senderId },
         content: message.content,
+        type: message.type,
         createdAt: message.createdAt,
         deliveredTo: message.deliveredTo,
         readBy: message.readBy
@@ -361,7 +370,7 @@ io.on('connection', (socket) => {
         broadcastData.fileUrl = message.fileUrl;
         broadcastData.fileName = message.fileName;
         broadcastData.fileSize = message.fileSize;
-        broadcastData.type = message.type;
+        broadcastData.s3Key = message.s3Key;
       }
 
       const room = io.sockets.adapter.rooms.get(`conversation:${conversationId}`);
@@ -369,16 +378,15 @@ io.on('connection', (socket) => {
 
       io.to(`conversation:${conversationId}`).emit('message:receive', broadcastData);
 
-      // Notify other participants personally (drives unread badges when the
-      // recipient doesn't have this conversation open / joined)
+      // Notify other participants personally
       conversation.participants.forEach(participantId => {
-        if (String(participantId) !== String(socket.userId)) {
+        if (participantId !== socket.userId) {
           io.to(`user:${participantId}`).emit('conversation:notify', broadcastData);
         }
       });
 
       // Acknowledge successful message send
-      if (callback) callback({ success: true, messageId: message._id });
+      if (callback) callback({ success: true, messageId: message.messageId });
     } catch (error) {
       console.error('Error sending message:', error);
       const errorResponse = { success: false, error: 'Failed to send message' };
@@ -396,7 +404,7 @@ io.on('connection', (socket) => {
       }
 
       const conversation = await Conversation.findById(conversationId);
-      if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
+      if (!conversation || !conversation.participants.includes(socket.userId)) {
         return;
       }
       socket.to(`conversation:${conversationId}`).emit('typing:start', { userId: socket.userId });
@@ -413,7 +421,7 @@ io.on('connection', (socket) => {
       }
 
       const conversation = await Conversation.findById(conversationId);
-      if (!conversation || !conversation.participants.some(p => p.toString() === socket.userId.toString())) {
+      if (!conversation || !conversation.participants.includes(socket.userId)) {
         return;
       }
       socket.to(`conversation:${conversationId}`).emit('typing:stop', { userId: socket.userId });
@@ -432,10 +440,11 @@ io.on('connection', (socket) => {
 
       const message = await Message.findById(messageId);
       if (message) {
-        const alreadyRead = message.readBy.some(r => r.user.toString() === socket.userId.toString());
+        const alreadyRead = message.readBy.some(r => r.user === socket.userId);
         if (!alreadyRead) {
-          message.readBy.push({ user: socket.userId });
-          await message.save();
+          await Message.update(messageId, {
+            readBy: [...message.readBy, { user: socket.userId, readAt: new Date().toISOString() }]
+          });
         }
       }
     } catch (error) {
