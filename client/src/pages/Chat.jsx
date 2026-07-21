@@ -792,7 +792,7 @@ export const Chat = () => {
       {/* Main Chat Area */}
       <div className="flex-1 flex gap-0 md:gap-6 md:p-6 min-h-0 overflow-hidden">
         {/* Conversations Sidebar - Hidden on mobile, visible on md+ */}
-        <div className={`${showSidebar ? 'absolute md:relative' : 'hidden md:flex'} inset-0 md:inset-auto md:w-80 bg-white md:rounded-2xl shadow-sm md:shadow-sm md:border md:border-gray-100 flex flex-col overflow-hidden z-40 md:z-auto`}>
+        <div className={`${showSidebar ? 'fixed md:relative' : 'hidden'} md:flex md:flex-col inset-0 md:inset-auto md:w-80 bg-white md:rounded-2xl shadow-lg md:shadow-sm md:border md:border-gray-100 flex-col overflow-hidden z-40 md:z-auto`}>
           {/* Your Profile */}
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-3">
