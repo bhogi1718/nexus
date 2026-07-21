@@ -13,7 +13,7 @@ export const sendOTP = async (req, res) => {
     }
 
     // Check if email already exists and is verified
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findByEmail(email);
     if (existingUser && existingUser.isEmailVerified) {
       return res.status(400).json({ message: 'Email already registered' });
     }
@@ -49,13 +49,13 @@ export const verifyOTPAndRegister = async (req, res) => {
     }
 
     // Check if email already exists
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findByEmail(email);
     if (existingUser && existingUser.isEmailVerified) {
       return res.status(400).json({ message: 'Email already registered' });
     }
 
     // Create new user (no password)
-    const newUser = new User({
+    const newUser = await User.create({
       name,
       email,
       publicKey,
@@ -63,16 +63,14 @@ export const verifyOTPAndRegister = async (req, res) => {
       isEmailVerified: true
     });
 
-    await newUser.save();
-
-    const { accessToken, refreshToken } = generateTokens(newUser._id);
+    const { accessToken, refreshToken } = generateTokens(newUser.userId);
 
     res.status(201).json({
       message: 'User registered successfully',
       accessToken,
       refreshToken,
       user: {
-        id: newUser._id,
+        id: newUser.userId,
         name: newUser.name,
         email: newUser.email,
         avatar: newUser.avatar,
@@ -95,7 +93,7 @@ export const sendOTPLogin = async (req, res) => {
     }
 
     // Check if email exists
-    const user = await User.findOne({ email });
+    const user = await User.findByEmail(email);
     if (!user) {
       return res.status(400).json({ message: 'Email not registered' });
     }
@@ -129,20 +127,20 @@ export const verifyOTPAndLogin = async (req, res) => {
       return res.status(429).json({ message: lockoutError.message });
     }
 
-    // Find user (explicitly include encryption keys for this device)
-    const user = await User.findOne({ email }).select('+secretKey');
+    // Find user (encryption keys are always included in DynamoDB)
+    const user = await User.findByEmail(email);
     if (!user) {
       return res.status(400).json({ message: 'Email not found' });
     }
 
-    const { accessToken, refreshToken } = generateTokens(user._id);
+    const { accessToken, refreshToken } = generateTokens(user.userId);
 
     res.status(200).json({
       message: 'Login successful',
       accessToken,
       refreshToken,
       user: {
-        id: user._id,
+        id: user.userId,
         name: user.name,
         email: user.email,
         avatar: user.avatar,
@@ -178,7 +176,7 @@ export const register = async (req, res) => {
       return res.status(400).json({ message: 'Password must be at least 6 characters' });
     }
 
-    const existingUser = await User.findOne({ email });
+    const existingUser = await User.findByEmail(email);
     if (existingUser) {
       return res.status(400).json({ message: 'Email already registered' });
     }
@@ -186,14 +184,12 @@ export const register = async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    const newUser = new User({
+    const newUser = await User.create({
       name,
       email,
       password: hashedPassword,
       publicKey
     });
-
-    await newUser.save();
 
     const { accessToken, refreshToken } = generateTokens(newUser._id);
 
@@ -223,7 +219,7 @@ export const login = async (req, res) => {
       return res.status(400).json({ message: 'Email and password are required' });
     }
 
-    const user = await User.findOne({ email });
+    const user = await User.findByEmail(email);
     if (!user) {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
@@ -233,7 +229,7 @@ export const login = async (req, res) => {
       return res.status(401).json({ message: 'Invalid email or password' });
     }
 
-    const { accessToken, refreshToken } = generateTokens(user._id);
+    const { accessToken, refreshToken } = generateTokens(user.userId);
 
     res.status(200).json({
       message: 'Login successful',
@@ -259,14 +255,14 @@ export const logout = (req, res) => {
 
 export const getProfile = async (req, res) => {
   try {
-    // Include the user's own encryption keys so any device can restore them
-    const user = await User.findById(req.userId).select('+secretKey');
+    // Encryption keys are always included in DynamoDB responses
+    const user = await User.findById(req.userId);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
     res.status(200).json({
       user: {
-        id: user._id,
+        id: user.userId,
         name: user.name,
         email: user.email,
         avatar: user.avatar,
@@ -295,16 +291,12 @@ export const updatePublicKey = async (req, res) => {
       update.secretKey = secretKey;
     }
 
-    const user = await User.findByIdAndUpdate(
-      req.userId,
-      update,
-      { new: true }
-    );
+    const user = await User.findByIdAndUpdate(req.userId, update);
 
     res.status(200).json({
       message: 'Keys updated successfully',
       user: {
-        id: user._id,
+        id: user.userId,
         name: user.name,
         email: user.email,
         publicKey: user.publicKey
