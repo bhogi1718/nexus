@@ -23,7 +23,10 @@
       "Bash(curl -s http://localhost:5000)",
       "Bash(curl -s http://localhost:5000/api/users/online)",
       "Bash(grep -E \"\\\\.md$|example\")",
-      "Bash(aws dynamodb *)"
+      "Bash(aws dynamodb *)",
+      "Bash(grep -n \"User.findOne\" /home/ubuntu/nexus/server/controllers/chatController.js 2>&1 | head -5)",
+      "Read(//home/ubuntu/nexus/server/controllers/**)",
+      "Bash(ssh -i \"c:/Users/charan tej/OneDrive/Desktop/nexus-key.pem\" ubuntu@100.58.111.27 \"grep -n 'User.findOne' ~/nexus/server/controllers/chatController.js | head -5\")"
     ],
     "deny": [
       "Bash(rm -rf *)",
