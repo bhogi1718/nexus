@@ -21,8 +21,8 @@ export class OTP {
       TABLES.OTPS,
       'email = :email',
       {},
-      { ':email': filter.email },
-      'email-index' // GSI on email
+      { ':email': filter.email.toLowerCase() },
+      'email-index'
     );
 
     return otps[0] || null;
