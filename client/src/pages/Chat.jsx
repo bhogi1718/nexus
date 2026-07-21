@@ -799,8 +799,8 @@ export const Chat = () => {
           />
         )}
 
-        {/* Conversations Sidebar */}
-        <div className={`absolute lg:relative inset-0 lg:inset-auto lg:w-80 w-72 lg:w-80 bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden transition-transform duration-300 ${showSidebar ? 'translate-x-0 z-40' : '-translate-x-full lg:translate-x-0 lg:z-auto'}`}>
+        {/* Conversations Sidebar - Hidden on mobile by default */}
+        <div className={`fixed lg:relative top-0 left-0 h-screen lg:h-auto w-72 lg:w-80 bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden z-40 transition-transform duration-300 ${showSidebar ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
           {/* Your Profile */}
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-3">
