@@ -755,7 +755,7 @@ export const Chat = () => {
     );
   }
 
-  const [showSidebar, setShowSidebar] = useState(true);
+  const [showSidebar, setShowSidebar] = useState(false);
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
@@ -790,9 +790,17 @@ export const Chat = () => {
       </nav>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex gap-0 md:gap-6 md:p-6 min-h-0 overflow-hidden relative">
-        {/* Conversations Sidebar - Full screen overlay on mobile, normal column on desktop */}
-        <div className={`${showSidebar ? 'block fixed' : 'hidden'} md:block md:static md:w-80 inset-0 md:inset-auto bg-white md:rounded-2xl shadow-lg md:shadow-sm md:border md:border-gray-100 flex flex-col overflow-hidden z-40 md:z-auto`}>
+      <div className="flex-1 flex gap-0 lg:gap-6 lg:p-6 min-h-0 overflow-hidden">
+        {/* Sidebar Overlay Backdrop (mobile only) */}
+        {showSidebar && (
+          <div
+            className="fixed inset-0 bg-black/40 z-30 lg:hidden"
+            onClick={() => setShowSidebar(false)}
+          />
+        )}
+
+        {/* Conversations Sidebar */}
+        <div className={`absolute lg:relative inset-0 lg:inset-auto lg:w-80 w-72 lg:w-80 bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden transition-transform duration-300 ${showSidebar ? 'translate-x-0 z-40' : '-translate-x-full lg:translate-x-0 lg:z-auto'}`}>
           {/* Your Profile */}
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-3">
@@ -932,7 +940,7 @@ export const Chat = () => {
 
         {/* Chat Window */}
         <div
-          className="flex-1 bg-white md:rounded-2xl shadow-sm md:shadow-sm md:border md:border-gray-100 flex flex-col min-h-0 overflow-hidden relative"
+          className="flex-1 w-full lg:w-auto bg-white lg:rounded-2xl shadow-sm lg:shadow-sm lg:border lg:border-gray-100 flex flex-col min-h-0 overflow-hidden relative"
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
