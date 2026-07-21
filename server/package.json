@@ -13,10 +13,12 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.1079.0",
     "@aws-sdk/client-s3": "^3.1079.0",
     "@aws-sdk/client-ses": "^3.1079.0",
     "@aws-sdk/client-sns": "^3.1079.0",
     "@aws-sdk/s3-request-presigner": "^3.1079.0",
+    "@aws-sdk/util-dynamodb": "^3.1079.0",
     "bcryptjs": "^2.4.3",
     "cookie-parser": "^1.4.6",
     "cors": "^2.8.5",
@@ -27,10 +29,8 @@
     "express-validator": "^7.3.2",
     "helmet": "^8.2.0",
     "jsonwebtoken": "^9.0.2",
-    "mongoose": "^7.5.0",
     "multer": "^2.2.0",
-    "nodemailer": "^9.0.3",
-    "socket.io": "^4.8.3",
+    "uuid": "^9.0.0",
     "xss": "^1.0.14"
   },
   "devDependencies": {
