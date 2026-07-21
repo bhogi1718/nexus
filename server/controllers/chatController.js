@@ -1,4 +1,3 @@
-import mongoose from 'mongoose';
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
@@ -6,6 +5,50 @@ import { uploadToS3, downloadFromS3, deleteFromS3, getS3Client, getBucketName } 
 import { getIO } from '../services/socketRegistry.js';
 import { sanitizeMessage } from '../services/sanitizationService.js';
 import { GetObjectCommand } from '@aws-sdk/client-s3';
+
+// Format user for frontend (map userId to _id)
+const formatUser = (user) => user ? {
+  _id: user.userId,
+  name: user.name,
+  email: user.email,
+  avatar: user.avatar,
+  status: user.status,
+  isOnline: user.isOnline,
+  publicKey: user.publicKey
+} : null;
+
+// Format message for frontend (map messageId to _id, conversationId to conversation)
+const formatMessage = (message) => message ? {
+  _id: message.messageId,
+  conversation: message.conversationId,
+  sender: message.sender,
+  type: message.type,
+  content: message.content,
+  fileUrl: message.fileUrl,
+  fileName: message.fileName,
+  fileSize: message.fileSize,
+  s3Key: message.s3Key,
+  readBy: message.readBy,
+  deliveredTo: message.deliveredTo,
+  deletedFor: message.deletedFor,
+  createdAt: message.createdAt,
+  updatedAt: message.updatedAt
+} : null;
+
+// Format conversation for frontend (map conversationId to _id)
+const formatConversation = (conversation) => conversation ? {
+  _id: conversation.conversationId,
+  type: conversation.type,
+  name: conversation.name,
+  avatar: conversation.avatar,
+  participants: conversation.participants,
+  admin: conversation.admin,
+  lastMessage: conversation.lastMessage,
+  lastMessageAt: conversation.lastMessageAt,
+  createdBy: conversation.createdBy,
+  createdAt: conversation.createdAt,
+  deletedFor: conversation.deletedFor
+} : null;
 
 // Create or get private conversation
 export const getOrCreateConversation = async (req, res) => {
@@ -27,40 +70,59 @@ export const getOrCreateConversation = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
+    // Find existing private conversation
     let conversation = await Conversation.findOne({
       type: 'private',
       participants: { $all: [currentUserId, userId] }
-    }).populate('participants', '-password -__v').populate('lastMessage');
+    });
 
     if (!conversation) {
       // New conversations can only be started with someone in your contacts
       const me = await User.findById(currentUserId);
-      const isContact = (me.contacts || []).some(c => String(c) === String(userId));
+      const isContact = (me.contacts || []).includes(userId);
       if (!isContact) {
         return res.status(403).json({ message: 'Add this user to your contacts first' });
       }
 
-      conversation = new Conversation({
+      conversation = await Conversation.create({
         type: 'private',
         participants: [currentUserId, userId],
         createdBy: currentUserId
       });
-      await conversation.save();
-      // Refetch with populated data
-      conversation = await Conversation.findById(conversation._id)
-        .populate('participants', '-password -__v')
-        .populate('lastMessage');
     } else if (conversation.deletedFor && conversation.deletedFor.includes(currentUserId)) {
       // If conversation was deleted by current user, restore it
-      conversation.deletedFor = conversation.deletedFor.filter(id => String(id) !== String(currentUserId));
-      await conversation.save();
-      // Refetch with populated data
-      conversation = await Conversation.findById(conversation._id)
-        .populate('participants', '-password -__v')
-        .populate('lastMessage');
+      await Conversation.update(conversation.conversationId, {
+        deletedFor: conversation.deletedFor.filter(id => id !== currentUserId)
+      });
+      conversation = await Conversation.findById(conversation.conversationId);
     }
 
-    res.status(200).json({ conversation });
+    // Populate participants with user details
+    const participants = await Promise.all(
+      conversation.participants.map(async (pId) => {
+        const user = await User.findById(pId);
+        return formatUser(user);
+      })
+    );
+
+    // Populate lastMessage
+    let lastMessage = null;
+    if (conversation.lastMessage) {
+      const msg = await Message.findById(conversation.lastMessage);
+      if (msg) {
+        // Populate sender in message
+        const sender = await User.findById(msg.sender);
+        lastMessage = formatMessage({ ...msg, sender: formatUser(sender) });
+      }
+    }
+
+    res.status(200).json({
+      conversation: formatConversation({
+        ...conversation,
+        participants,
+        lastMessage
+      })
+    });
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -79,7 +141,7 @@ export const getConversations = async (req, res) => {
       .filter(c => !c.deletedFor || !c.deletedFor.includes(req.userId))
       .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
 
-    // Add unread counts
+    // Add unread counts and populate data
     const result = await Promise.all(
       filtered.map(async (conv) => {
         const messages = await Message.findByConversation(conv.conversationId);
@@ -89,8 +151,28 @@ export const getConversations = async (req, res) => {
           !m.readBy.some(r => r.user === req.userId)
         ).length;
 
+        // Populate participants
+        const participants = await Promise.all(
+          conv.participants.map(async (pId) => {
+            const user = await User.findById(pId);
+            return formatUser(user);
+          })
+        );
+
+        // Populate lastMessage
+        let lastMessage = null;
+        if (conv.lastMessage) {
+          const msg = await Message.findById(conv.lastMessage);
+          if (msg) {
+            const sender = await User.findById(msg.sender);
+            lastMessage = formatMessage({ ...msg, sender: formatUser(sender) });
+          }
+        }
+
         return {
-          ...conv,
+          ...formatConversation(conv),
+          participants,
+          lastMessage,
           unreadCount
         };
       })
@@ -108,37 +190,32 @@ export const markConversationRead = async (req, res) => {
   try {
     const { conversationId } = req.params;
 
-    if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-      return res.status(400).json({ message: 'Invalid conversation ID' });
-    }
-
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    if (!conversation.participants.some(p => String(p) === String(req.userId))) {
+    if (!conversation.participants.includes(req.userId)) {
       return res.status(403).json({ message: 'Not authorized' });
     }
 
-    await Message.updateMany(
-      {
-        conversation: conversationId,
-        sender: { $ne: req.userId },
-        'readBy.user': { $ne: req.userId }
-      },
-      { $push: { readBy: { user: req.userId, readAt: new Date() } } }
-    );
+    // Get all messages and mark unread ones as read
+    const messages = await Message.findByConversation(conversationId);
+    for (const message of messages) {
+      if (message.sender !== req.userId && !message.readBy.some(r => r.user === req.userId)) {
+        await Message.update(message.messageId, {
+          readBy: [...message.readBy, { user: req.userId, readAt: new Date().toISOString() }]
+        });
+      }
+    }
 
-    // Tell the other participants their messages were read (blue ticks).
-    // Emit to both the personal rooms AND the conversation room so the
-    // sender gets it regardless of which room their socket is in.
+    // Tell the other participants their messages were read
     const io = getIO();
     if (io) {
       const payload = { conversationId, readerId: req.userId };
       io.to(`conversation:${conversationId}`).emit('messages:read', payload);
       conversation.participants.forEach(p => {
-        if (String(p) !== String(req.userId)) {
+        if (p !== req.userId) {
           io.to(`user:${p}`).emit('messages:read', payload);
         }
       });
@@ -157,59 +234,47 @@ export const getMessages = async (req, res) => {
     const { conversationId } = req.params;
     let { page = 1, limit = 20 } = req.query;
 
-    console.log('🔍 getMessages called:', { conversationId, userId: req.userId, page, limit });
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation) {
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
 
-    // Validate conversation ID format
-    if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-      console.log('❌ Invalid conversation ID format:', conversationId);
-      return res.status(400).json({ message: 'Invalid conversation ID' });
+    // Check if conversation is deleted for current user
+    if (conversation.deletedFor && conversation.deletedFor.includes(req.userId)) {
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
+      return res.status(403).json({ message: 'Not authorized to view this conversation' });
     }
 
     // Validate and constrain pagination
     page = Math.max(1, parseInt(page) || 1);
     limit = Math.min(Math.max(1, parseInt(limit) || 20), 100);
 
-    console.log('🔎 Finding conversation in DB:', conversationId);
-    const conversation = await Conversation.findById(conversationId);
-    console.log('📊 Conversation found:', !!conversation, conversation?._id);
+    const allMessages = await Message.findByConversation(conversationId);
 
-    if (!conversation) {
-      console.log('❌ Conversation not found for ID:', conversationId);
-      // Debug: check all conversations for this user
-      const userConversations = await Conversation.find({ participants: req.userId });
-      console.log('👥 Conversations for user:', userConversations.map(c => c._id.toString()));
-      return res.status(404).json({ message: 'Conversation not found' });
-    }
+    // Filter out deleted messages and apply pagination
+    const filtered = allMessages
+      .filter(m => !m.deletedFor || !m.deletedFor.includes(req.userId))
+      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); // Ascending for display
 
-    // Check if conversation is deleted for current user
-    if (conversation.deletedFor && conversation.deletedFor.some(id => String(id) === String(req.userId))) {
-      return res.status(404).json({ message: 'Conversation not found' });
-    }
+    const start = (page - 1) * limit;
+    const pageMessages = filtered.slice(start, start + limit);
 
-    if (!conversation.participants || !conversation.participants.some(p => p && String(p) === String(req.userId))) {
-      return res.status(403).json({ message: 'Not authorized to view this conversation' });
-    }
-
-    const skip = (page - 1) * limit;
-
-    // Exclude messages this user has deleted
-    const messageFilter = { conversation: conversationId, deletedFor: { $ne: req.userId } };
-
-    const messages = await Message.find(messageFilter)
-      .populate('sender', '-password')
-      .populate('readBy.user', '-password')
-      .populate('deliveredTo', '-password')
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(parseInt(limit));
-
-    const totalMessages = await Message.countDocuments(messageFilter);
+    // Populate senders
+    const messages = await Promise.all(
+      pageMessages.map(async (msg) => {
+        const sender = await User.findById(msg.sender);
+        return formatMessage({ ...msg, sender: formatUser(sender) });
+      })
+    );
 
     res.status(200).json({
-      messages: messages.reverse(),
-      totalMessages,
+      messages,
+      totalMessages: filtered.length,
       page: parseInt(page),
-      pages: Math.ceil(totalMessages / limit)
+      pages: Math.ceil(filtered.length / limit)
     });
   } catch (error) {
     console.error('Chat error:', error);
@@ -217,7 +282,7 @@ export const getMessages = async (req, res) => {
   }
 };
 
-// Send a message
+// Send a message (REST endpoint - mainly for non-socket clients)
 export const sendMessage = async (req, res) => {
   try {
     const { conversationId } = req.params;
@@ -238,23 +303,28 @@ export const sendMessage = async (req, res) => {
 
     const sanitizedContent = sanitizeMessage(content);
 
-    const message = new Message({
-      conversation: conversationId,
+    // Get who's online
+    const onlineUsers = new Set(); // In production, check real online status
+    const deliveredTo = conversation.participants.filter(id => id !== req.userId && onlineUsers.has(id));
+
+    const message = await Message.create({
+      conversationId,
       sender: req.userId,
       type,
       content: sanitizedContent,
-      deliveredTo: conversation.participants.filter(id => id.toString() !== req.userId.toString())
+      deliveredTo
     });
 
-    await message.save();
-    await message.populate('sender', '-password');
+    const sender = await User.findById(req.userId);
+    const formattedMsg = formatMessage({ ...message, sender: formatUser(sender) });
 
     // Update conversation's last message
-    conversation.lastMessage = message._id;
-    conversation.lastMessageAt = new Date();
-    await conversation.save();
+    await Conversation.update(conversationId, {
+      lastMessage: message.messageId,
+      lastMessageAt: new Date().toISOString()
+    });
 
-    res.status(201).json({ message });
+    res.status(201).json({ message: formattedMsg });
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -271,24 +341,23 @@ export const markAsRead = async (req, res) => {
       return res.status(404).json({ message: 'Message not found' });
     }
 
-    const alreadyRead = message.readBy.some(r => r.user.toString() === req.userId.toString());
+    const alreadyRead = message.readBy.some(r => r.user === req.userId);
     if (!alreadyRead) {
-      message.readBy.push({ user: req.userId });
-      await message.save();
+      await Message.update(messageId, {
+        readBy: [...message.readBy, { user: req.userId, readAt: new Date().toISOString() }]
+      });
     }
 
-    await message.populate('sender', '-password');
-    await message.populate('readBy.user', '-password');
-
-    res.status(200).json({ message });
+    const updatedMessage = await Message.findById(messageId);
+    const sender = await User.findById(updatedMessage.sender);
+    res.status(200).json({ message: formatMessage({ ...updatedMessage, sender: formatUser(sender) }) });
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
 
-// Search users — restricted to the requester's own contacts, so profiles
-// of strangers are never exposed
+// Search users — restricted to the requester's own contacts
 export const searchUsers = async (req, res) => {
   try {
     const { query } = req.query;
@@ -316,14 +385,7 @@ export const searchUsers = async (req, res) => {
         (u.email && u.email.toLowerCase().includes(queryLower))
       )
       .slice(0, 10)
-      .map(u => ({
-        id: u.userId,
-        name: u.name,
-        email: u.email,
-        avatar: u.avatar,
-        status: u.status,
-        isOnline: u.isOnline
-      }));
+      .map(u => formatUser(u));
 
     res.status(200).json({ users: filtered });
   } catch (error) {
@@ -341,33 +403,27 @@ export const addContact = async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    const contactUser = await User.findOne({ email: email.toLowerCase().trim() });
+    const contactUser = await User.findByEmail(email.toLowerCase().trim());
     if (!contactUser) {
       return res.status(404).json({ message: 'No user found with that email' });
     }
 
-    if (String(contactUser._id) === String(req.userId)) {
+    if (contactUser.userId === req.userId) {
       return res.status(400).json({ message: 'You cannot add yourself' });
     }
 
     const me = await User.findById(req.userId);
-    if ((me.contacts || []).some(c => String(c) === String(contactUser._id))) {
+    if ((me.contacts || []).includes(contactUser.userId)) {
       return res.status(400).json({ message: 'Already in your contacts' });
     }
 
-    me.contacts.push(contactUser._id);
-    await me.save();
+    await User.update(req.userId, {
+      contacts: [...(me.contacts || []), contactUser.userId]
+    });
 
     res.status(200).json({
       message: 'Contact added',
-      contact: {
-        _id: contactUser._id,
-        name: contactUser.name,
-        email: contactUser.email,
-        avatar: contactUser.avatar,
-        status: contactUser.status,
-        isOnline: contactUser.isOnline
-      }
+      contact: formatUser(contactUser)
     });
   } catch (error) {
     console.error('Add contact error:', error);
@@ -392,12 +448,7 @@ export const getContacts = async (req, res) => {
           if (!contact) return null;
 
           return {
-            id: contact.userId,
-            name: contact.name,
-            email: contact.email,
-            avatar: contact.avatar || null,
-            status: contact.status || "Hey there! I'm using Nexus",
-            isOnline: contact.isOnline || false,
+            ...formatUser(contact),
             nickname: (me.contactNicknames && me.contactNicknames[contact.userId]) || null
           };
         } catch (err) {
@@ -421,12 +472,8 @@ export const setContactNickname = async (req, res) => {
     const { contactId } = req.params;
     const { nickname } = req.body;
 
-    if (!mongoose.Types.ObjectId.isValid(contactId)) {
-      return res.status(400).json({ message: 'Invalid contact ID' });
-    }
-
     const me = await User.findById(req.userId);
-    if (!(me.contacts || []).some(c => String(c) === String(contactId))) {
+    if (!(me.contacts || []).includes(contactId)) {
       return res.status(400).json({ message: 'Not in your contacts' });
     }
 
@@ -435,12 +482,14 @@ export const setContactNickname = async (req, res) => {
       return res.status(400).json({ message: 'Nickname too long (max 50 characters)' });
     }
 
+    const updated = { ...me.contactNicknames || {} };
     if (trimmed) {
-      me.contactNicknames.set(String(contactId), trimmed);
+      updated[contactId] = trimmed;
     } else {
-      me.contactNicknames.delete(String(contactId));
+      delete updated[contactId];
     }
-    await me.save();
+
+    await User.update(req.userId, { contactNicknames: updated });
 
     res.status(200).json({ message: 'Nickname updated', nickname: trimmed || null });
   } catch (error) {
@@ -453,10 +502,16 @@ export const setContactNickname = async (req, res) => {
 export const removeContact = async (req, res) => {
   try {
     const { contactId } = req.params;
-    if (!mongoose.Types.ObjectId.isValid(contactId)) {
-      return res.status(400).json({ message: 'Invalid contact ID' });
+
+    const me = await User.findById(req.userId);
+    if (!(me.contacts || []).includes(contactId)) {
+      return res.status(404).json({ message: 'Contact not found' });
     }
-    await User.findByIdAndUpdate(req.userId, { $pull: { contacts: contactId } });
+
+    await User.update(req.userId, {
+      contacts: (me.contacts || []).filter(id => id !== contactId)
+    });
+
     res.status(200).json({ message: 'Contact removed' });
   } catch (error) {
     console.error('Remove contact error:', error);
@@ -469,25 +524,43 @@ export const getConversationDetails = async (req, res) => {
   try {
     const { conversationId } = req.params;
 
-    // Validate conversation ID format
-    if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-      return res.status(400).json({ message: 'Invalid conversation ID' });
-    }
-
-    const conversation = await Conversation.findById(conversationId)
-      .populate('participants', '-password -__v')
-      .populate('lastMessage')
-      .populate('createdBy', '-password');
-
+    const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    if (!conversation.participants || !conversation.participants.some(p => p && String(p._id) === String(req.userId))) {
+    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to view this conversation' });
     }
 
-    res.status(200).json({ conversation });
+    // Populate participants
+    const participants = await Promise.all(
+      conversation.participants.map(async (pId) => {
+        const user = await User.findById(pId);
+        return formatUser(user);
+      })
+    );
+
+    // Populate lastMessage
+    let lastMessage = null;
+    if (conversation.lastMessage) {
+      const msg = await Message.findById(conversation.lastMessage);
+      if (msg) {
+        const sender = await User.findById(msg.sender);
+        lastMessage = formatMessage({ ...msg, sender: formatUser(sender) });
+      }
+    }
+
+    const createdByUser = conversation.createdBy ? await User.findById(conversation.createdBy) : null;
+
+    res.status(200).json({
+      conversation: formatConversation({
+        ...conversation,
+        participants,
+        lastMessage,
+        createdBy: formatUser(createdByUser)
+      })
+    });
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -507,24 +580,19 @@ export const uploadMedia = async (req, res) => {
       return res.status(400).json({ message: 'Conversation ID is required' });
     }
 
-    // Validate conversation ID format
-    if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-      return res.status(400).json({ message: 'Invalid conversation ID' });
-    }
-
     // Verify user is a participant in the conversation
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    if (!conversation.participants || !conversation.participants.some(p => p && String(p) === String(req.userId))) {
+    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to upload to this conversation' });
     }
 
     console.log('Uploading file:', req.file.originalname, 'Size:', req.file.size, 'MIME:', req.file.mimetype);
 
-    // Upload to S3 using file buffer with actual MIME type
+    // Upload to S3
     const uploadResult = await uploadToS3(req.file.buffer, req.file.originalname, conversationId, req.file.mimetype);
 
     console.log('Upload successful:', uploadResult.url);
@@ -541,7 +609,6 @@ export const uploadMedia = async (req, res) => {
   }
 };
 
-// Download file with proper headers
 // Helper function to get MIME type based on file extension
 const getMimeType = (fileName) => {
   const ext = fileName.toLowerCase().split('.').pop();
@@ -571,11 +638,6 @@ export const downloadFile = async (req, res) => {
 
     console.log('📥 Download request for message:', messageId);
 
-    // Validate message ID format
-    if (!mongoose.Types.ObjectId.isValid(messageId)) {
-      return res.status(400).json({ message: 'Invalid message ID' });
-    }
-
     // Fetch the message to get file details
     const message = await Message.findById(messageId);
     if (!message || !message.fileUrl) {
@@ -583,12 +645,12 @@ export const downloadFile = async (req, res) => {
     }
 
     // Verify user has access to this conversation
-    const conversation = await Conversation.findById(message.conversation);
+    const conversation = await Conversation.findById(message.conversationId);
     if (!conversation) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    if (!conversation.participants || !conversation.participants.some(p => p && p.toString() === req.userId.toString())) {
+    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to download this file' });
     }
 
@@ -640,7 +702,7 @@ export const downloadFile = async (req, res) => {
         return res.status(400).json({ message: 'File is empty' });
       }
 
-      // Verify buffer checksum (first and last 10 bytes for debugging)
+      // Verify buffer checksum
       const firstBytes = buffer.slice(0, 10).toString('hex');
       const lastBytes = buffer.slice(-10).toString('hex');
       console.log(`📋 Buffer checksum | First 10 bytes: ${firstBytes} | Last 10 bytes: ${lastBytes}`);
@@ -672,11 +734,6 @@ export const deleteConversation = async (req, res) => {
   try {
     const { conversationId } = req.params;
 
-    // Validate conversation ID format
-    if (!mongoose.Types.ObjectId.isValid(conversationId)) {
-      return res.status(400).json({ message: 'Invalid conversation ID' });
-    }
-
     // Find conversation
     const conversation = await Conversation.findById(conversationId);
     if (!conversation) {
@@ -684,40 +741,36 @@ export const deleteConversation = async (req, res) => {
     }
 
     // Verify user is a participant
-    if (!conversation.participants || !conversation.participants.some(p => p && String(p) === String(req.userId))) {
+    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
       return res.status(403).json({ message: 'Not authorized to delete this conversation' });
     }
 
     // Mark conversation as deleted for this user only
-    if (!conversation.deletedFor) {
-      conversation.deletedFor = [];
+    const deletedFor = conversation.deletedFor || [];
+    if (!deletedFor.includes(req.userId)) {
+      deletedFor.push(req.userId);
+      await Conversation.update(conversationId, { deletedFor });
     }
 
-    // Check if already deleted for this user
-    const alreadyDeleted = conversation.deletedFor.some(id => String(id) === String(req.userId));
-    if (!alreadyDeleted) {
-      conversation.deletedFor.push(req.userId);
-      await conversation.save();
+    // Also mark all messages as deleted for this user
+    const messages = await Message.findByConversation(conversationId);
+    for (const msg of messages) {
+      const msgDeletedFor = msg.deletedFor || [];
+      if (!msgDeletedFor.includes(req.userId)) {
+        msgDeletedFor.push(req.userId);
+        await Message.update(msg.messageId, { deletedFor: msgDeletedFor });
+      }
     }
 
-    // Also delete all messages from this user's view, so they don't
-    // reappear if the conversation is recreated later
-    await Message.updateMany(
-      { conversation: conversationId },
-      { $addToSet: { deletedFor: req.userId } }
-    );
-
-    // If every participant has deleted the conversation, remove it entirely
-    const allDeleted = conversation.participants.every(p =>
-      conversation.deletedFor.some(id => String(id) === String(p))
+    // Check if every participant has deleted the conversation
+    const updatedConv = await Conversation.findById(conversationId);
+    const allDeleted = updatedConv.participants.every(p =>
+      updatedConv.deletedFor && updatedConv.deletedFor.includes(p)
     );
 
     if (allDeleted) {
       // Clean up S3 files from media messages (best-effort)
-      const mediaMessages = await Message.find(
-        { conversation: conversationId, s3Key: { $ne: null } },
-        's3Key'
-      );
+      const mediaMessages = messages.filter(m => m.s3Key);
       for (const msg of mediaMessages) {
         try {
           await deleteFromS3(msg.s3Key);
@@ -726,7 +779,10 @@ export const deleteConversation = async (req, res) => {
         }
       }
 
-      await Message.deleteMany({ conversation: conversationId });
+      // Delete all messages and conversation
+      for (const msg of messages) {
+        await Message.deleteMany({ messageId: msg.messageId });
+      }
       await Conversation.findByIdAndDelete(conversationId);
     }
 

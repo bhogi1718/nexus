@@ -191,14 +191,14 @@ export const register = async (req, res) => {
       publicKey
     });
 
-    const { accessToken, refreshToken } = generateTokens(newUser._id);
+    const { accessToken, refreshToken } = generateTokens(newUser.userId);
 
     res.status(201).json({
       message: 'User registered successfully',
       accessToken,
       refreshToken,
       user: {
-        id: newUser._id,
+        id: newUser.userId,
         name: newUser.name,
         email: newUser.email,
         avatar: newUser.avatar,
@@ -236,7 +236,7 @@ export const login = async (req, res) => {
       accessToken,
       refreshToken,
       user: {
-        id: user._id,
+        id: user.userId,
         name: user.name,
         email: user.email,
         avatar: user.avatar,
