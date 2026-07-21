@@ -22,7 +22,8 @@
       "Bash(curl -s -X POST http://localhost:5000/api/auth/send-otp -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\"}')",
       "Bash(curl -s http://localhost:5000)",
       "Bash(curl -s http://localhost:5000/api/users/online)",
-      "Bash(grep -E \"\\\\.md$|example\")"
+      "Bash(grep -E \"\\\\.md$|example\")",
+      "Bash(aws dynamodb *)"
     ],
     "deny": [
       "Bash(rm -rf *)",

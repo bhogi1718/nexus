@@ -19,6 +19,7 @@ import csrf from 'csurf';
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/authRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
+import User from './models/User.js';
 import Message from './models/Message.js';
 import Conversation from './models/Conversation.js';
 import { setIO } from './services/socketRegistry.js';
@@ -313,7 +314,7 @@ io.on('connection', (socket) => {
         return;
       }
 
-      if (!conversation.participants || !conversation.participants.some(p => p && p.toString() === socket.userId.toString())) {
+      if (!conversation.participants || !conversation.participants.includes(socket.userId)) {
         const error = 'Not authorized to send message in this conversation';
         console.error(error);
         if (callback) callback({ success: false, error });
