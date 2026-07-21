@@ -800,7 +800,7 @@ export const Chat = () => {
         )}
 
         {/* Conversations Sidebar - Hidden on mobile by default */}
-        <div className={`fixed lg:relative top-0 left-0 h-screen lg:h-auto w-72 lg:w-80 bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden z-40 transition-transform duration-300 ${showSidebar ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0`}>
+        <div className={`${showSidebar ? 'fixed' : 'hidden'} lg:flex lg:relative top-0 lg:top-auto left-0 lg:left-auto h-screen lg:h-auto w-72 lg:w-80 bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden z-40`}>
           {/* Your Profile */}
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-3">
