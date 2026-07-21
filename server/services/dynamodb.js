@@ -83,10 +83,16 @@ export const db = {
     try {
       const params = {
         TableName: tableName,
-        KeyConditionExpression: keyConditionExpression,
-        ExpressionAttributeNames: expressionAttributeNames,
-        ExpressionAttributeValues: expressionAttributeValues
+        KeyConditionExpression: keyConditionExpression
       };
+
+      if (Object.keys(expressionAttributeNames).length > 0) {
+        params.ExpressionAttributeNames = expressionAttributeNames;
+      }
+
+      if (Object.keys(expressionAttributeValues).length > 0) {
+        params.ExpressionAttributeValues = expressionAttributeValues;
+      }
 
       if (indexName) {
         params.IndexName = indexName;
