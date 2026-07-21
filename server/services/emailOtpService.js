@@ -86,7 +86,7 @@ export async function generateAndSaveOTP(email) {
     await OTP.deleteMany({ email: email.toLowerCase() });
 
     const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
+    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
 
     const otpDoc = await OTP.create({
       email: email.toLowerCase(),
