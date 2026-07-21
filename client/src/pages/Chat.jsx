@@ -790,7 +790,7 @@ export const Chat = () => {
       </nav>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-0 lg:gap-6 lg:p-6 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row gap-0 min-h-0 overflow-hidden lg:gap-6 lg:p-6">
         {/* Sidebar Overlay Backdrop (mobile only) */}
         {showSidebar && (
           <div
@@ -800,7 +800,7 @@ export const Chat = () => {
         )}
 
         {/* Conversations Sidebar */}
-        <div className={`${showSidebar ? 'fixed inset-0 z-40' : 'hidden'} lg:block lg:static lg:w-80 lg:h-auto bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden`}>
+        <div className={`${showSidebar ? 'fixed inset-0 z-40 flex' : 'hidden'} lg:flex lg:relative lg:w-80 lg:h-auto lg:gap-0 bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex-col overflow-hidden`}>
           {/* Your Profile */}
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-3">
