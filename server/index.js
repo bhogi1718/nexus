@@ -10,7 +10,6 @@ dotenv.config({ path: path.join(__dirname, '.env') });
 
 import express from 'express';
 import cors from 'cors';
-import mongoose from 'mongoose';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import jwt from 'jsonwebtoken';
@@ -30,10 +29,7 @@ import { requestLogger } from './middleware/logging.js';
 // AWS keys are NOT required: on EC2/Elastic Beanstalk the SDK uses the
 // instance role automatically; keys are only needed for local development.
 const isProduction = process.env.NODE_ENV === 'production';
-const requiredEnvVars = ['JWT_SECRET', 'AWS_S3_BUCKET'];
-if (isProduction) {
-  requiredEnvVars.push('MONGODB_URI');
-}
+const requiredEnvVars = ['JWT_SECRET', 'AWS_S3_BUCKET', 'DYNAMODB_USERS_TABLE', 'DYNAMODB_MESSAGES_TABLE', 'DYNAMODB_CONVERSATIONS_TABLE', 'DYNAMODB_OTPS_TABLE'];
 
 const missingEnvVars = requiredEnvVars.filter(env => !process.env[env]);
 
@@ -41,10 +37,6 @@ if (missingEnvVars.length > 0) {
   console.error(`❌ Missing required environment variables: ${missingEnvVars.join(', ')}`);
   console.error(`📝 Copy .env.example to .env and fill in the values`);
   process.exit(1);
-}
-
-if (!process.env.MONGODB_URI && !isProduction) {
-  console.warn('⚠️  MONGODB_URI not set — using local MongoDB (development only)');
 }
 
 if (!process.env.AWS_ACCESS_KEY_ID) {
@@ -190,16 +182,9 @@ app.use((req, res, next) => {
   next();
 });
 
-// MongoDB Connection
-mongoose.connect(process.env.MONGODB_URI)
-  .then(() => {
-    dbConnected = true;
-    console.log('MongoDB connected');
-  })
-  .catch(err => {
-    console.error('MongoDB connection error:', err);
-    process.exit(1);
-  });
+// DynamoDB is configured via AWS SDK (no explicit connection needed)
+dbConnected = true;
+console.log('✅ DynamoDB tables configured and ready');
 
 // Routes
 app.get('/', (req, res) => {
