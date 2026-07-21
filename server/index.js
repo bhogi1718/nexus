@@ -349,22 +349,26 @@ io.on('connection', (socket) => {
         lastMessageAt: new Date().toISOString()
       });
 
-      // Broadcast to conversation room
+      // Broadcast to conversation room (map IDs to _id for frontend compatibility)
       const broadcastData = {
+        _id: message.messageId,
         messageId: message.messageId,
+        conversation: conversationId,
         conversationId,
         sender: sender ? {
+          _id: sender.userId,
           userId: sender.userId,
           name: sender.name,
           email: sender.email,
           avatar: sender.avatar,
           status: sender.status
-        } : { userId: senderId },
+        } : { _id: senderId, userId: senderId },
         content: message.content,
         type: message.type,
         createdAt: message.createdAt,
         deliveredTo: message.deliveredTo,
-        readBy: message.readBy
+        readBy: message.readBy,
+        deletedFor: message.deletedFor || []
       };
 
       if (fileUrl) {
