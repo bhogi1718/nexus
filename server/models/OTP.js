@@ -1,36 +1,71 @@
-import mongoose from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
+import db, { TABLES } from '../services/dynamodb.js';
 
-const otpSchema = new mongoose.Schema({
-  email: {
-    type: String,
-    required: true,
-    index: true,
-    lowercase: true
-  },
-  otp: {
-    type: String,
-    required: true
-  },
-  attempts: {
-    type: Number,
-    default: 0
-  },
-  maxAttempts: {
-    type: Number,
-    default: 5
-  },
-  expiresAt: {
-    type: Date,
-    required: true,
-    index: { expires: 0 } // Auto-delete after expiry
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
+export class OTP {
+  static async create(data) {
+    const otp = {
+      otpId: data.otpId || uuidv4(),
+      email: data.email,
+      otp: data.otp,
+      attempts: data.attempts || 0,
+      maxAttempts: data.maxAttempts || 5,
+      expiresAt: data.expiresAt,
+      createdAt: new Date().toISOString()
+    };
+
+    return await db.put(TABLES.OTPS, otp);
   }
-});
 
-// Compound index for account-level lockout tracking
-otpSchema.index({ email: 1, createdAt: -1 });
+  static async findOne(filter) {
+    const otps = await db.query(
+      TABLES.OTPS,
+      'email = :email',
+      {},
+      { ':email': filter.email },
+      'email-index' // GSI on email
+    );
 
-export default mongoose.model('OTP', otpSchema);
+    return otps[0] || null;
+  }
+
+  static async deleteMany(filter) {
+    if (filter.email) {
+      const otps = await db.query(
+        TABLES.OTPS,
+        'email = :email',
+        {},
+        { ':email': filter.email },
+        'email-index'
+      );
+
+      for (const otp of otps) {
+        await db.delete(TABLES.OTPS, { otpId: otp.otpId });
+      }
+
+      return { deletedCount: otps.length };
+    }
+
+    return { deletedCount: 0 };
+  }
+
+  static async deleteOne(filter) {
+    if (filter._id) {
+      await db.delete(TABLES.OTPS, { otpId: filter._id });
+      return { deletedCount: 1 };
+    }
+
+    const otp = await this.findOne(filter);
+    if (otp) {
+      await db.delete(TABLES.OTPS, { otpId: otp.otpId });
+      return { deletedCount: 1 };
+    }
+
+    return { deletedCount: 0 };
+  }
+
+  static async save(otp) {
+    return await db.put(TABLES.OTPS, otp);
+  }
+}
+
+export default OTP;
