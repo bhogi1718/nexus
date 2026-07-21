@@ -790,7 +790,7 @@ export const Chat = () => {
       </nav>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex gap-0 lg:gap-6 lg:p-6 min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row gap-0 lg:gap-6 lg:p-6 min-h-0 overflow-hidden">
         {/* Sidebar Overlay Backdrop (mobile only) */}
         {showSidebar && (
           <div
