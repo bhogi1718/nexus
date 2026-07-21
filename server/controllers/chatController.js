@@ -71,29 +71,32 @@ export const getOrCreateConversation = async (req, res) => {
 export const getConversations = async (req, res) => {
   try {
     const conversations = await Conversation.find({
-      participants: req.userId,
-      deletedFor: { $ne: req.userId }
-    })
-      .populate('participants', '-password -__v')
-      .populate('lastMessage')
-      .populate('createdBy', '-password')
-      .sort({ lastMessageAt: -1 });
+      participants: req.userId
+    });
 
-    // Attach unread message count per conversation (messages from others
-    // that this user hasn't read and hasn't deleted)
-    const conversationsWithUnread = await Promise.all(
-      conversations.map(async (conv) => {
-        const unreadCount = await Message.countDocuments({
-          conversation: conv._id,
-          sender: { $ne: req.userId },
-          'readBy.user': { $ne: req.userId },
-          deletedFor: { $ne: req.userId }
-        });
-        return { ...conv.toObject(), unreadCount };
+    // Filter out deleted conversations and sort
+    const filtered = conversations
+      .filter(c => !c.deletedFor || !c.deletedFor.includes(req.userId))
+      .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+
+    // Add unread counts
+    const result = await Promise.all(
+      filtered.map(async (conv) => {
+        const messages = await Message.findByConversation(conv.conversationId);
+        const unreadCount = messages.filter(m =>
+          m.sender !== req.userId &&
+          !m.deletedFor.includes(req.userId) &&
+          !m.readBy.some(r => r.user === req.userId)
+        ).length;
+
+        return {
+          ...conv,
+          unreadCount
+        };
       })
     );
 
-    res.status(200).json({ conversations: conversationsWithUnread });
+    res.status(200).json({ conversations: result });
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -360,19 +363,29 @@ export const addContact = async (req, res) => {
 // List the requester's contacts (with any personal nicknames)
 export const getContacts = async (req, res) => {
   try {
-    const me = await User.findById(req.userId)
-      .populate('contacts', 'name email avatar status isOnline');
+    const me = await User.findById(req.userId);
+    if (!me) {
+      return res.status(404).json({ message: 'User not found' });
+    }
 
-    const contacts = (me.contacts || []).map(c => ({
-      _id: c._id,
-      name: c.name,
-      email: c.email,
-      avatar: c.avatar,
-      status: c.status,
-      isOnline: c.isOnline,
-      nickname: me.contactNicknames?.get(String(c._id)) || null
-    }));
+    // Get contact details from DynamoDB
+    const contactIds = me.contacts || [];
+    const contactUsers = await Promise.all(
+      contactIds.map(async (contactId) => {
+        const contact = await User.findById(contactId);
+        return contact ? {
+          id: contact.userId,
+          name: contact.name,
+          email: contact.email,
+          avatar: contact.avatar,
+          status: contact.status,
+          isOnline: contact.isOnline,
+          nickname: me.contactNicknames?.[contact.userId] || null
+        } : null;
+      })
+    );
 
+    const contacts = contactUsers.filter(Boolean);
     res.status(200).json({ contacts });
   } catch (error) {
     console.error('Get contacts error:', error);
