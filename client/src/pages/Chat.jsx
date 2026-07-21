@@ -758,21 +758,21 @@ export const Chat = () => {
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      {/* Navigation */}
+      {/* Navigation - Mobile responsive */}
       <nav className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-3 md:px-6 py-3 md:py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2 md:gap-3">
-            <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg flex-shrink-0">
-              <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-2.5 sm:py-3 lg:py-4 flex justify-between items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 lg:gap-3 flex-1 min-w-0">
+            <div className="inline-flex items-center justify-center w-9 sm:w-10 h-9 sm:h-10 bg-blue-600 rounded-lg flex-shrink-0">
+              <svg className="w-5 sm:w-6 h-5 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
-            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Nexus</h1>
+            <h1 className="text-base sm:text-lg lg:text-2xl font-bold text-gray-900">Nexus</h1>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
             <button
               onClick={() => setShowSidebar(!showSidebar)}
-              className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+              className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
@@ -780,7 +780,7 @@ export const Chat = () => {
             </button>
             <button
               onClick={logout}
-              className="px-3 md:px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors text-sm md:text-base"
+              className="px-2.5 sm:px-3 lg:px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors text-xs sm:text-sm lg:text-base min-h-[40px] flex items-center justify-center"
             >
               Logout
             </button>
@@ -788,8 +788,8 @@ export const Chat = () => {
         </div>
       </nav>
 
-      {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col lg:flex-row gap-0 min-h-0 overflow-hidden lg:gap-6 lg:p-6">
+      {/* Main Chat Area - Mobile-first: stack vertically, lg: side-by-side */}
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden lg:flex-row lg:gap-6 lg:p-6">
         {/* Sidebar Overlay Backdrop (mobile only) */}
         {showSidebar && (
           <div
@@ -799,29 +799,29 @@ export const Chat = () => {
           />
         )}
 
-        {/* Conversations Sidebar */}
-        <div className={`${showSidebar ? 'fixed inset-0 z-40 flex' : 'hidden lg:flex'} lg:relative lg:w-80 lg:h-auto lg:gap-0 bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex-col overflow-hidden`}>
-          {/* Your Profile */}
-          <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-full flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
+        {/* Conversations Sidebar - Mobile overlay + Desktop sidebar */}
+        <div className={`${showSidebar ? 'fixed inset-0 z-40' : 'hidden'} lg:relative lg:w-80 lg:h-auto lg:flex lg:flex-col bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden`}>
+          {/* Your Profile - Mobile responsive */}
+          <div className="p-3 sm:p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <div className="flex items-center gap-2 sm:gap-3">
+              <div className="w-10 sm:w-12 h-10 sm:h-12 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm sm:text-lg font-bold flex-shrink-0">
                 {user?.name?.charAt(0).toUpperCase() || 'U'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-sm truncate">
+                <p className="font-semibold text-gray-900 text-xs sm:text-sm truncate">
                   {user?.name || 'User'}
                 </p>
-                <p className="text-xs text-gray-600 truncate">
+                <p className="text-[11px] sm:text-xs text-gray-600 truncate">
                   {user?.email || 'No email'}
                 </p>
-                <p className="text-xs text-green-600 font-medium flex items-center gap-1 mt-0.5">
+                <p className="text-[11px] sm:text-xs text-green-600 font-medium flex items-center gap-1 mt-0.5">
                   <span className="w-2 h-2 bg-green-500 rounded-full"></span>
                   Online
                 </p>
               </div>
               <button
                 onClick={handleOpenProfile}
-                className="p-2 rounded-lg text-blue-600 hover:bg-blue-100 transition-colors flex-shrink-0"
+                className="p-2 rounded-lg text-blue-600 hover:bg-blue-100 transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center"
                 title="My profile & contacts"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -830,7 +830,7 @@ export const Chat = () => {
               </button>
               <button
                 onClick={() => setShowSidebar(false)}
-                className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors"
+                className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -839,20 +839,20 @@ export const Chat = () => {
             </div>
           </div>
 
-          {/* Add contact + search contacts */}
-          <div className="p-4 border-b border-gray-100 space-y-2">
-            <form onSubmit={handleAddContact} className="flex gap-2">
+          {/* Add contact + search contacts - Mobile responsive */}
+          <div className="p-3 sm:p-4 border-b border-gray-100 space-y-2">
+            <form onSubmit={handleAddContact} className="flex gap-1.5 sm:gap-2">
               <input
                 type="email"
                 placeholder="Add contact by email..."
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
-                className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm"
+                className="flex-1 px-2.5 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-xs sm:text-sm"
               />
               <button
                 type="submit"
                 disabled={addingContact || !contactEmail.trim()}
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors"
+                className="px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors text-base min-w-[40px] min-h-[40px] flex items-center justify-center"
                 title="Add contact"
               >
                 +
@@ -868,7 +868,7 @@ export const Chat = () => {
               placeholder="Search your contacts..."
               value={searchQuery}
               onChange={handleSearch}
-              className="w-full px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm"
+              className="w-full px-2.5 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-xs sm:text-sm"
             />
           </div>
 
@@ -902,7 +902,7 @@ export const Chat = () => {
                     <button
                       key={conversation._id}
                       onClick={() => loadMessages(conversation._id)}
-                      className={`w-full p-4 text-left border-b border-gray-100 transition-colors ${
+                      className={`w-full p-3 sm:p-4 text-left border-b border-gray-100 transition-colors min-h-[60px] sm:min-h-[70px] flex flex-col justify-center ${
                         selectedConversation === conversation._id
                           ? 'bg-blue-50'
                           : hasUnread
@@ -910,22 +910,22 @@ export const Chat = () => {
                             : 'hover:bg-gray-50'
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className={`truncate flex items-center gap-1.5 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'}`}>
+                      <div className="flex items-center justify-between gap-1.5 sm:gap-2">
+                        <p className={`truncate flex items-center gap-1 flex-1 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'} text-xs sm:text-sm`}>
                           {getConversationName(conversation)}
                           {isUnknownSender(conversation) && (
-                            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-semibold rounded-full flex-shrink-0">
+                            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] sm:text-[10px] font-semibold rounded-full flex-shrink-0">
                               Unknown
                             </span>
                           )}
                         </p>
                         {hasUnread && (
-                          <span className="flex-shrink-0 min-w-[20px] h-5 px-1.5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                          <span className="flex-shrink-0 min-w-[20px] h-5 px-1 bg-blue-600 text-white text-[10px] sm:text-xs font-bold rounded-full flex items-center justify-center">
                             {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
                           </span>
                         )}
                       </div>
-                      <p className={`text-sm truncate ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'}`}>
+                      <p className={`text-xs sm:text-sm truncate ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'} line-clamp-1`}>
                         {conversation.lastMessage?.undecryptable
                           ? '🔒 Encrypted message'
                           : conversation.lastMessage?.content || 'No messages yet'}
@@ -938,9 +938,9 @@ export const Chat = () => {
           )}
         </div>
 
-        {/* Chat Window */}
+        {/* Chat Window - Mobile full-width, lg: flex-1 in row layout */}
         <div
-          className="flex-1 w-full lg:w-auto bg-white lg:rounded-2xl shadow-sm lg:shadow-sm lg:border lg:border-gray-100 flex flex-col min-h-0 overflow-hidden relative"
+          className="w-full lg:flex-1 bg-white lg:rounded-2xl lg:shadow-sm lg:border lg:border-gray-100 flex flex-col min-h-0 overflow-hidden relative"
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
@@ -959,7 +959,7 @@ export const Chat = () => {
           {selectedConversation ? (
             <>
               {/* Chat Header */}
-              <div className="p-4 border-b border-gray-100 bg-white">
+              <div className="p-3 lg:p-4 border-b border-gray-100 bg-white">
                 {conversations.map(conv => {
                   if (conv._id === selectedConversation) {
                     const otherUser = conv.type === 'group'
@@ -972,11 +972,11 @@ export const Chat = () => {
                         });
 
                     return (
-                      <div key={conv._id} className="flex items-center justify-between gap-2 md:gap-3">
-                        {/* Back button on mobile */}
+                      <div key={conv._id} className="flex items-center justify-between gap-1 sm:gap-2 lg:gap-3">
+                        {/* Back button on mobile - shows when sidebar is hidden */}
                         <button
                           onClick={() => setShowSidebar(true)}
-                          className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0"
+                          className="lg:hidden p-2.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center"
                           title="Back to conversations"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -984,9 +984,9 @@ export const Chat = () => {
                           </svg>
                         </button>
 
-                        <div className="flex items-center gap-2 md:gap-3 flex-1 min-w-0">
-                          {/* Avatar */}
-                          <div className="w-10 md:w-12 h-10 md:h-12 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-base md:text-lg font-bold flex-shrink-0">
+                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                          {/* Avatar - Mobile: 40px, Desktop: 48px */}
+                          <div className="w-9 sm:w-10 lg:w-12 h-9 sm:h-10 lg:h-12 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-sm sm:text-base lg:text-lg font-bold flex-shrink-0">
                             {conv.type === 'group'
                               ? conv.name?.charAt(0).toUpperCase() || 'G'
                               : (otherUser?.name?.charAt(0).toUpperCase() || 'U')}
@@ -994,24 +994,24 @@ export const Chat = () => {
 
                           {/* Profile Info */}
                           <div className="flex-1 min-w-0">
-                            <h2 className="text-base md:text-xl font-bold text-gray-900 truncate">
+                            <h2 className="text-sm sm:text-base lg:text-xl font-bold text-gray-900 truncate">
                               {getConversationName(conv)}
                             </h2>
                             {conv.type === 'group' ? (
-                              <p className="text-sm text-gray-500">
+                              <p className="text-xs sm:text-sm text-gray-500">
                                 {conv.participants.length} participants
                               </p>
                             ) : (
                               <div className="flex flex-col gap-0.5">
-                                <p className="text-sm text-gray-500 flex items-center gap-2">
-                                  {otherUser?.email || 'No email'}
+                                <p className="text-xs sm:text-sm text-gray-500 flex items-center gap-1 sm:gap-2 flex-wrap">
+                                  <span className="truncate">{otherUser?.email || 'No email'}</span>
                                   {isUnknownSender(conv) && (
-                                    <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">
+                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-semibold rounded-full flex-shrink-0">
                                       Unknown
                                     </span>
                                   )}
                                 </p>
-                                <p className="text-xs text-gray-400">
+                                <p className="text-[11px] sm:text-xs text-gray-400">
                                   {otherUser?.isOnline ? (
                                     <span className="flex items-center gap-1">
                                       <span className="w-2 h-2 bg-green-500 rounded-full"></span>
@@ -1026,11 +1026,11 @@ export const Chat = () => {
                           </div>
                         </div>
 
-                        {/* Add unknown sender to contacts */}
+                        {/* Add unknown sender to contacts - Hidden on mobile, show on lg+ */}
                         {conv.type === 'private' && isUnknownSender(conv) && (
                           <button
                             onClick={() => handleAddUnknownContact(otherUser)}
-                            className="px-3 py-2 bg-amber-500 hover:bg-amber-600 text-white text-sm font-semibold rounded-lg transition-colors flex-shrink-0 flex items-center gap-1.5"
+                            className="hidden sm:flex px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-semibold rounded-lg transition-colors flex-shrink-0 items-center gap-1 min-h-[40px]"
                             title="Add this person to your contacts"
                           >
                             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1040,10 +1040,10 @@ export const Chat = () => {
                           </button>
                         )}
 
-                        {/* Close Chat Button */}
+                        {/* Close Chat Button - Mobile icon button, 40px touch target */}
                         <button
                           onClick={handleCloseChat}
-                          className="p-2 rounded-lg transition-colors flex-shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700"
+                          className="p-2.5 rounded-lg transition-colors flex-shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700 min-w-[40px] min-h-[40px] flex items-center justify-center lg:hidden"
                           title="Close chat"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1051,11 +1051,11 @@ export const Chat = () => {
                           </svg>
                         </button>
 
-                        {/* Delete Button */}
+                        {/* Delete Button - Mobile: icon only, lg+: shows on hover */}
                         <button
                           onClick={() => handleDeleteConversation(conv._id)}
                           disabled={deletingConversationId === conv._id}
-                          className={`p-2 rounded-lg transition-colors flex-shrink-0 ${
+                          className={`p-2.5 rounded-lg transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center ${
                             deletingConversationId === conv._id
                               ? 'text-gray-400 cursor-not-allowed'
                               : 'text-red-600 hover:bg-red-50'
@@ -1078,8 +1078,8 @@ export const Chat = () => {
                 })}
               </div>
 
-              {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 bg-gray-50" style={{ scrollBehavior: 'smooth' }}>
+              {/* Messages - Mobile: tight spacing, lg+: comfortable spacing */}
+              <div className="flex-1 overflow-y-auto p-2 sm:p-3 lg:p-6 space-y-2 sm:space-y-3 bg-gray-50" style={{ scrollBehavior: 'smooth' }}>
                 {messages.length === 0 ? (
                   <div className="text-center text-gray-500 py-12">No messages yet. Start the conversation!</div>
                 ) : (
@@ -1115,26 +1115,26 @@ export const Chat = () => {
                     return (
                       <div
                         key={message._id}
-                        className={`flex items-end gap-2 ${
+                        className={`flex items-end gap-1.5 sm:gap-2 ${
                           isCurrentUser ? 'justify-end' : 'justify-start'
                         }`}
                       >
                         {!isCurrentUser && (
-                          <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                          <div className="flex flex-col items-center flex-shrink-0">
+                            <div className="w-7 sm:w-8 h-7 sm:h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-[10px] sm:text-xs font-bold">
                               {message.sender?.name ? message.sender.name.charAt(0).toUpperCase() : 'U'}
                             </div>
                           </div>
                         )}
                         <div
-                          className={`max-w-md px-4 py-3 rounded-2xl shadow-sm ${
+                          className={`max-w-xs sm:max-w-sm lg:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm text-sm sm:text-base ${
                             isCurrentUser
                               ? 'bg-blue-600 text-white rounded-br-none'
                               : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
                           }`}
                         >
                           {!isCurrentUser && (
-                            <p className="text-xs font-semibold text-gray-500 mb-1">
+                            <p className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5 sm:mb-1">
                               {displayName(message.sender)}
                             </p>
                           )}
@@ -1142,16 +1142,16 @@ export const Chat = () => {
                             <MediaMessage message={message} isCurrentUser={isCurrentUser} />
                           )}
                           {!message.fileUrl && displayContent && (
-                            <p className="text-sm break-words">{displayContent}</p>
+                            <p className="text-xs sm:text-sm break-words">{displayContent}</p>
                           )}
                           {!message.fileUrl && message.undecryptable && (
-                            <p className="text-sm italic opacity-60">🔒 Encrypted message</p>
+                            <p className="text-xs sm:text-sm italic opacity-60">🔒 Encrypted message</p>
                           )}
                           {message.fileUrl && message.content && message.content.startsWith('[Media:') && (
                             null
                           )}
                           <p
-                            className={`text-xs mt-2 flex items-center gap-1 ${
+                            className={`text-[10px] sm:text-xs mt-1 sm:mt-2 flex items-center gap-0.5 sm:gap-1 ${
                               isCurrentUser
                                 ? 'text-blue-100 justify-end'
                                 : 'text-gray-400'
@@ -1182,8 +1182,8 @@ export const Chat = () => {
                           </p>
                         </div>
                         {isCurrentUser && (
-                          <div className="flex flex-col items-center">
-                            <div className="w-8 h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-xs font-bold">
+                          <div className="flex flex-col items-center flex-shrink-0">
+                            <div className="w-7 sm:w-8 h-7 sm:h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-[10px] sm:text-xs font-bold">
                               {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
                             </div>
                           </div>
@@ -1193,11 +1193,11 @@ export const Chat = () => {
                   })
                 )}
                 {typingUsers.length > 0 && (
-                  <div className="flex items-center gap-2 px-4 py-2 text-gray-500 text-sm">
+                  <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 text-gray-500 text-xs sm:text-sm">
                     <span className="flex gap-1">
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce"></span>
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
                     </span>
                     Someone is typing...
                   </div>
@@ -1205,33 +1205,40 @@ export const Chat = () => {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input */}
-              <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100">
+              {/* Input Area - Mobile optimized */}
+              <form onSubmit={handleSendMessage} className="p-2 sm:p-3 lg:p-4 border-t border-gray-100 bg-white">
                 {error && (
-                  <div className="mb-3 p-2 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center gap-2">
+                  <div className="mb-2 sm:mb-3 p-2 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-lg flex items-center gap-2">
                     <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                     </svg>
                     {error}
                   </div>
                 )}
-                <div className="flex gap-2">
-                  <MediaUploader
-                    ref={fileInputRef}
-                    onUploadSuccess={handleMediaUploadSuccess}
-                    conversationId={selectedConversation}
-                  />
+                <div className="flex gap-1.5 sm:gap-2">
+                  {/* Media Upload Button - 40px touch target on mobile */}
+                  <div className="flex-shrink-0 min-w-[40px] h-[40px] flex items-center justify-center">
+                    <MediaUploader
+                      ref={fileInputRef}
+                      onUploadSuccess={handleMediaUploadSuccess}
+                      conversationId={selectedConversation}
+                    />
+                  </div>
+
+                  {/* Message Input */}
                   <input
                     type="text"
                     value={messageInput}
                     onChange={handleMessageInputChange}
                     placeholder="Type a message..."
-                    className="flex-1 px-3 md:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base"
+                    className="flex-1 px-2.5 sm:px-3 lg:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm lg:text-base"
                   />
+
+                  {/* Send Button - 40px touch target on mobile */}
                   <button
                     type="submit"
                     disabled={!messageInput.trim()}
-                    className="px-4 md:px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm md:text-base"
+                    className="px-3 sm:px-4 lg:px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-xs sm:text-sm lg:text-base min-w-[40px] min-h-[40px] flex items-center justify-center"
                   >
                     Send
                   </button>
