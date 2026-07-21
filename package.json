@@ -2,6 +2,7 @@
   "name": "nexus",
   "version": "1.0.0",
   "description": "Nexus - Real-time messaging app built with MERN",
+  "type": "module",
   "private": true,
   "scripts": {
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:client\"",
@@ -11,7 +12,12 @@
     "build:client": "cd client && npm run build",
     "build:server": "cd server && npm run build"
   },
-  "dependencies": {},
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.600.0",
+    "@aws-sdk/lib-dynamodb": "^3.600.0",
+    "dotenv": "^16.3.1",
+    "mongoose": "^7.5.0"
+  },
   "devDependencies": {
     "concurrently": "^9.0.0"
   }
