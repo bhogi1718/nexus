@@ -297,20 +297,35 @@ export const searchUsers = async (req, res) => {
       return res.status(400).json({ message: 'Search query must be between 2 and 100 characters' });
     }
 
-    // Sanitize regex special characters to prevent regex injection and ReDoS
-    const sanitizedQuery = query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
+    const queryLower = query.toLowerCase();
     const me = await User.findById(req.userId);
+    const contactIds = me.contacts || [];
 
-    const users = await User.find({
-      _id: { $in: me.contacts || [] },
-      $or: [
-        { name: { $regex: sanitizedQuery, $options: 'i' } },
-        { email: { $regex: sanitizedQuery, $options: 'i' } }
-      ]
-    }).select('-password').limit(10);
+    // Get contact details and filter by query
+    const contactUsers = await Promise.all(
+      contactIds.map(async (contactId) => {
+        const contact = await User.findById(contactId);
+        return contact;
+      })
+    );
 
-    res.status(200).json({ users });
+    const filtered = contactUsers
+      .filter(Boolean)
+      .filter(u =>
+        (u.name && u.name.toLowerCase().includes(queryLower)) ||
+        (u.email && u.email.toLowerCase().includes(queryLower))
+      )
+      .slice(0, 10)
+      .map(u => ({
+        id: u.userId,
+        name: u.name,
+        email: u.email,
+        avatar: u.avatar,
+        status: u.status,
+        isOnline: u.isOnline
+      }));
+
+    res.status(200).json({ users: filtered });
   } catch (error) {
     console.error('Chat error:', error);
     res.status(500).json({ message: 'Server error' });
