@@ -799,8 +799,8 @@ export const Chat = () => {
           />
         )}
 
-        {/* Conversations Sidebar - Hidden on mobile by default */}
-        <div className={`${showSidebar ? 'fixed' : 'hidden'} lg:flex lg:relative top-0 lg:top-auto left-0 lg:left-auto h-screen lg:h-auto w-72 lg:w-80 bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden z-40`}>
+        {/* Conversations Sidebar */}
+        <div className={`${showSidebar ? 'fixed inset-0 z-40' : 'hidden'} lg:block lg:static lg:w-80 lg:h-auto bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden`}>
           {/* Your Profile */}
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-3">
