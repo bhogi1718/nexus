@@ -15,7 +15,13 @@
       "Glob(**)",
       "Bash(git add *)",
       "Bash(curl -s http://localhost:5000/api/csrf-token)",
-      "Bash(curl -s -X POST http://localhost:5000/api/auth/send-otp -H 'Content-Type: application/json' -H 'X-CSRF-Token: O4Q09z1s-CQ8-Yxb61gycof3x8BWnHknXtNo' -d '{\"email\":\"test@example.com\"}')"
+      "Bash(curl -s -X POST http://localhost:5000/api/auth/send-otp -H 'Content-Type: application/json' -H 'X-CSRF-Token: O4Q09z1s-CQ8-Yxb61gycof3x8BWnHknXtNo' -d '{\"email\":\"test@example.com\"}')",
+      "Bash(pkill -f \"node index.js\")",
+      "Bash(npm run *)",
+      "Read(//tmp/**)",
+      "Bash(curl -s -X POST http://localhost:5000/api/auth/send-otp -H 'Content-Type: application/json' -d '{\"email\":\"test@example.com\"}')",
+      "Bash(curl -s http://localhost:5000)",
+      "Bash(curl -s http://localhost:5000/api/users/online)"
     ],
     "deny": [
       "Bash(rm -rf *)",
