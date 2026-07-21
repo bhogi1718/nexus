@@ -88,13 +88,12 @@ export async function generateAndSaveOTP(email) {
     const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
-    const otpDoc = new OTP({
+    const otpDoc = await OTP.create({
       email: email.toLowerCase(),
       otp,
       expiresAt
     });
 
-    await otpDoc.save();
     console.log(`📧 OTP generated for ${email}: ${otp}`);
 
     // Try to send via SES, but don't fail if it doesn't work (dev mode)
@@ -124,9 +123,9 @@ export async function verifyOTP(email, otp) {
     const emailLower = email.toLowerCase();
 
     // Check if account is locked
-    const user = await User.findOne({ email: emailLower });
-    if (user?.accountLockoutUntil && user.accountLockoutUntil > new Date()) {
-      const minutes = Math.ceil((user.accountLockoutUntil - new Date()) / 60000);
+    const user = await User.findByEmail(emailLower);
+    if (user?.accountLockoutUntil && new Date(user.accountLockoutUntil) > new Date()) {
+      const minutes = Math.ceil((new Date(user.accountLockoutUntil) - new Date()) / 60000);
       console.log(`❌ Account locked for ${email} (${minutes} minutes remaining)`);
       throw new Error(`Account temporarily locked. Try again in ${minutes} minutes.`);
     }
@@ -139,64 +138,68 @@ export async function verifyOTP(email, otp) {
     }
 
     // Check if OTP expired
-    if (otpDoc.expiresAt < new Date()) {
+    if (new Date(otpDoc.expiresAt) < new Date()) {
       console.log(`❌ OTP expired for ${email}`);
-      await OTP.deleteOne({ _id: otpDoc._id });
+      await OTP.deleteOne({ otpId: otpDoc.otpId });
       return false;
     }
 
     // Check per-OTP attempts
     if (otpDoc.attempts >= otpDoc.maxAttempts) {
       console.log(`❌ Max attempts exceeded for ${email} on this OTP`);
-      await OTP.deleteOne({ _id: otpDoc._id });
+      await OTP.deleteOne({ otpId: otpDoc.otpId });
 
       // Increment account-level failed attempts
       if (user) {
-        user.failedOtpAttempts = (user.failedOtpAttempts || 0) + 1;
+        const newFailedAttempts = (user.failedOtpAttempts || 0) + 1;
 
         // Lock account after 10 failed attempts across all OTPs
-        if (user.failedOtpAttempts >= 10) {
-          user.accountLockoutUntil = new Date(Date.now() + 60 * 60 * 1000); // 1 hour lockout
-          await user.save();
+        if (newFailedAttempts >= 10) {
+          await User.update(user.userId, {
+            failedOtpAttempts: newFailedAttempts,
+            accountLockoutUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+          });
           console.log(`🔒 Account locked for ${email} after 10 failed OTP attempts`);
           throw new Error('Account temporarily locked due to too many failed attempts. Try again in 1 hour.');
         }
 
-        await user.save();
+        await User.update(user.userId, { failedOtpAttempts: newFailedAttempts });
       }
       return false;
     }
 
     // Verify OTP
     if (otpDoc.otp !== otp) {
-      otpDoc.attempts += 1;
-      await otpDoc.save();
+      await OTP.update(otpDoc.otpId, { attempts: otpDoc.attempts + 1 });
 
       // Increment account-level counter
       if (user) {
-        user.failedOtpAttempts = (user.failedOtpAttempts || 0) + 1;
-        if (user.failedOtpAttempts >= 10) {
-          user.accountLockoutUntil = new Date(Date.now() + 60 * 60 * 1000);
-          await user.save();
+        const newFailedAttempts = (user.failedOtpAttempts || 0) + 1;
+        if (newFailedAttempts >= 10) {
+          await User.update(user.userId, {
+            failedOtpAttempts: newFailedAttempts,
+            accountLockoutUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString()
+          });
           console.log(`🔒 Account locked for ${email} after 10 failed OTP attempts`);
           throw new Error('Account temporarily locked due to too many failed attempts. Try again in 1 hour.');
         }
-        await user.save();
+        await User.update(user.userId, { failedOtpAttempts: newFailedAttempts });
       }
 
-      console.log(`❌ Invalid OTP for ${email} (Attempt ${otpDoc.attempts}/${otpDoc.maxAttempts})`);
+      console.log(`❌ Invalid OTP for ${email} (Attempt ${otpDoc.attempts + 1}/${otpDoc.maxAttempts})`);
       return false;
     }
 
     // OTP verified successfully - reset failed attempts counter
     if (user) {
-      user.failedOtpAttempts = 0;
-      user.accountLockoutUntil = null;
-      await user.save();
+      await User.update(user.userId, {
+        failedOtpAttempts: 0,
+        accountLockoutUntil: null
+      });
     }
 
     console.log(`✓ OTP verified for ${email}`);
-    await OTP.deleteOne({ _id: otpDoc._id });
+    await OTP.deleteOne({ otpId: otpDoc.otpId });
     return true;
   } catch (error) {
     console.error('❌ Error verifying OTP:', error.message);
