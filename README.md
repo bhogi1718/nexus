@@ -1,44 +1,48 @@
-# Nexus
+# Nexus - Real-time Messaging App
 
-**Nexus** is a real-time messaging application built with the MERN stack (MongoDB, Express, React, Node.js).
+A secure, real-time messaging application built with MERN stack and AWS services.
 
 ## Features
 
-- 🔐 **User Authentication** — Secure registration & login with JWT
-- 💬 **Real-time Messaging** — Instant message delivery via WebSockets (Socket.io)
-- 👥 **Group Chats** — Create and manage group conversations
-- 📎 **Media Sharing** — Share images, videos, and documents
+- 🔐 **Secure Authentication** — OTP-based login with JWT tokens
+- 💬 **Real-time Messaging** — WebSocket-powered instant messaging via Socket.io
+- 👥 **Contact Management** — Add, block, and manage contacts
+- 📁 **File Sharing** — Upload files via AWS S3
+- 🌐 **Online Status** — Real-time presence detection
 - ✅ **Read Receipts** — Message delivery & read status
-- 🔔 **Notifications** — Push notifications for new messages
-- 🎥 **Voice/Video Calls** — Audio and video calling (P2P with WebRTC)
-- 🔍 **Search** — Find messages and contacts
-- 🔒 **End-to-End Encryption** — Secure messaging (Phase 8+)
+- 📱 **Responsive Design** — Works on desktop and mobile
 
 ## Tech Stack
 
 **Frontend:**
 - React (Vite)
 - Socket.io-client
+- TailwindCSS
 - Axios
 
 **Backend:**
 - Node.js + Express
-- MongoDB + Mongoose
-- Socket.io
-- JWT (JSON Web Tokens)
-- bcryptjs
+- AWS DynamoDB (NoSQL database)
+- AWS S3 (file storage)
+- AWS SES (email service)
+- Socket.io (real-time communication)
+- JWT (authentication)
+- bcryptjs (password hashing)
 
 **Infrastructure:**
-- Docker & Docker Compose
-- AWS (Elastic Beanstalk, S3, ElastiCache)
-- Redis (caching & real-time features)
+- AWS DynamoDB (serverless database)
+- AWS S3 (file storage)
+- AWS SES (email)
+- AWS EC2 (app hosting)
+- PM2 (process management)
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js (v18+)
-- MongoDB (local or Atlas)
+- Node.js (v20+)
+- AWS Account (DynamoDB, S3, SES configured)
 - Git
+- AWS CLI configured with credentials
 
 ### Installation
 
@@ -51,15 +55,26 @@ cd messenger
 2. Install dependencies:
 ```bash
 npm install
+cd server && npm install && cd ..
+cd client && npm install && cd ..
 ```
 
-3. Create `.env` files in `/server` and `/client`:
+3. Configure environment:
 ```bash
 cp server/.env.example server/.env
-cp .env.example .env
 ```
 
-4. Update `.env` with your MongoDB URI and other config
+4. Update `server/.env`:
+```env
+AWS_REGION=us-east-1
+AWS_S3_BUCKET=your-bucket-name
+DYNAMODB_USERS_TABLE=nexus-users
+DYNAMODB_MESSAGES_TABLE=nexus-messages
+DYNAMODB_CONVERSATIONS_TABLE=nexus-conversations
+DYNAMODB_OTPS_TABLE=nexus-otps
+JWT_SECRET=your-secret-key
+SES_FROM_EMAIL=noreply@yourdomain.com
+```
 
 ### Running Locally
 
@@ -72,37 +87,83 @@ npm run dev:server  # Terminal 1
 npm run dev:client  # Terminal 2
 ```
 
-The app will be available at `http://localhost:5173` (client) and `http://localhost:5000` (server).
+Access at: `http://localhost:5000` (server) or `http://localhost:5173` (client)
 
 ## Project Structure
 
 ```
-nexus/
+messenger/
 ├── client/              # React frontend
 │   ├── src/
 │   │   ├── components/
 │   │   ├── pages/
-│   │   ├── hooks/
-│   │   ├── context/
 │   │   └── services/
 │   └── package.json
 ├── server/              # Express backend
-│   ├── routes/
-│   ├── controllers/
-│   ├── models/
-│   ├── middleware/
-│   ├── config/
+│   ├── models/         # DynamoDB models
+│   ├── routes/         # API routes
+│   ├── services/       # AWS services (DynamoDB, S3, SES)
+│   ├── middleware/     # Auth, validation, etc
 │   └── package.json
-└── ROADMAP.md           # Development phases
+├── scripts/            # Migration and utility scripts
+└── package.json        # Root dependencies
 ```
 
-## Development Roadmap
+## Deployment to AWS EC2
 
-See [ROADMAP.md](ROADMAP.md) for the complete step-by-step build phases (Phase 0–12).
+### Prerequisites
+- AWS EC2 instance (Ubuntu 26.04)
+- Security group with ports 22, 80, 443, 5000 open
+- SSH key pair (.pem file)
 
-## Deployment
+### Step-by-step Deployment
 
-Deployment to AWS Elastic Beanstalk (with Docker) is planned after full development completion.
+```bash
+# 1. SSH to instance
+ssh -i your-key.pem ubuntu@your-ec2-ip
+
+# 2. Install Node.js
+curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
+sudo apt-get install -y nodejs
+
+# 3. Clone repository
+git clone <your-repo-url>
+cd messenger
+
+# 4. Install dependencies
+npm install
+cd server && npm install && cd ..
+
+# 5. Configure environment
+nano server/.env
+# Add AWS credentials and table names
+
+# 6. Install PM2
+npm install -g pm2
+
+# 7. Start server
+pm2 start server/index.js --name "nexus-server"
+pm2 startup
+pm2 save
+
+# 8. Start client (optional, for static serving)
+cd client && npm run build && cd ..
+
+# 9. Access app
+# http://your-ec2-ip:5000
+```
+
+### Using PM2
+```bash
+# View logs
+pm2 logs nexus-server
+
+# Restart server
+pm2 restart nexus-server
+
+# Stop server
+pm2 stop nexus-server
+```
 
 ## License
 
