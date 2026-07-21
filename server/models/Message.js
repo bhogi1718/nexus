@@ -30,19 +30,7 @@ export class Message {
   }
 
   static async findByConversation(conversationId, limit = 20, lastKey = null) {
-    const params = {
-      TableName: TABLES.MESSAGES,
-      KeyConditionExpression: 'conversationId = :cid',
-      ExpressionAttributeValues: { ':cid': conversationId },
-      ScanIndexForward: false, // Sort descending (newest first)
-      Limit: limit,
-      IndexName: 'conversationId-createdAt-index'
-    };
-
-    if (lastKey) {
-      params.ExclusiveStartKey = lastKey;
-    }
-
+    // Query by primary key (conversationId, createdAt)
     const result = await db.query(
       TABLES.MESSAGES,
       'conversationId = :cid',
@@ -50,8 +38,10 @@ export class Message {
       { ':cid': conversationId }
     );
 
-    // DynamoDB doesn't support DESC in GSI the same way, so sort in code
-    return result.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)).slice(0, limit);
+    // Sort descending (newest first) and apply limit
+    return result
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+      .slice(0, limit);
   }
 
   static async countByConversationAndUser(conversationId, userId) {
