@@ -115,8 +115,12 @@ export const db = {
 
       if (filterExpression) {
         params.FilterExpression = filterExpression;
-        params.ExpressionAttributeNames = expressionAttributeNames;
-        params.ExpressionAttributeValues = expressionAttributeValues;
+        if (Object.keys(expressionAttributeNames).length > 0) {
+          params.ExpressionAttributeNames = expressionAttributeNames;
+        }
+        if (Object.keys(expressionAttributeValues).length > 0) {
+          params.ExpressionAttributeValues = expressionAttributeValues;
+        }
       }
 
       const result = await docClient.send(new ScanCommand(params));
