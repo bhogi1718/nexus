@@ -754,32 +754,44 @@ export const Chat = () => {
     );
   }
 
+  const [showSidebar, setShowSidebar] = useState(true);
+
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
       {/* Navigation */}
       <nav className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-6 py-4 flex justify-between items-center">
-          <div className="flex items-center gap-3">
-            <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg">
+        <div className="max-w-7xl mx-auto px-3 md:px-6 py-3 md:py-4 flex justify-between items-center">
+          <div className="flex items-center gap-2 md:gap-3">
+            <div className="inline-flex items-center justify-center w-10 h-10 bg-blue-600 rounded-lg flex-shrink-0">
               <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
-            <h1 className="text-2xl font-bold text-gray-900">Nexus</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-gray-900">Nexus</h1>
           </div>
-          <button
-            onClick={logout}
-            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors"
-          >
-            Logout
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowSidebar(!showSidebar)}
+              className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+            </button>
+            <button
+              onClick={logout}
+              className="px-3 md:px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors text-sm md:text-base"
+            >
+              Logout
+            </button>
+          </div>
         </div>
       </nav>
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex max-w-7xl w-full mx-auto gap-6 p-6 min-h-0 overflow-hidden">
-        {/* Conversations Sidebar */}
-        <div className="w-80 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
+      <div className="flex-1 flex gap-0 md:gap-6 md:p-6 min-h-0 overflow-hidden">
+        {/* Conversations Sidebar - Hidden on mobile, visible on md+ */}
+        <div className={`${showSidebar ? 'absolute md:relative' : 'hidden md:flex'} inset-0 md:inset-auto md:w-80 bg-white md:rounded-2xl shadow-sm md:shadow-sm md:border md:border-gray-100 flex flex-col overflow-hidden z-40 md:z-auto`}>
           {/* Your Profile */}
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-3">
@@ -805,6 +817,14 @@ export const Chat = () => {
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </button>
+              <button
+                onClick={() => setShowSidebar(false)}
+                className="md:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors"
+              >
+                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                 </svg>
               </button>
             </div>
@@ -911,7 +931,7 @@ export const Chat = () => {
 
         {/* Chat Window */}
         <div
-          className="flex-1 bg-white rounded-2xl shadow-sm border border-gray-100 flex flex-col min-h-0 overflow-hidden relative"
+          className="flex-1 bg-white md:rounded-2xl shadow-sm md:shadow-sm md:border md:border-gray-100 flex flex-col min-h-0 overflow-hidden relative"
           onDragEnter={handleDragEnter}
           onDragLeave={handleDragLeave}
           onDragOver={handleDragOver}
@@ -1039,7 +1059,7 @@ export const Chat = () => {
               </div>
 
               {/* Messages */}
-              <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-gray-50" style={{ scrollBehavior: 'smooth' }}>
+              <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-3 bg-gray-50" style={{ scrollBehavior: 'smooth' }}>
                 {messages.length === 0 ? (
                   <div className="text-center text-gray-500 py-12">No messages yet. Start the conversation!</div>
                 ) : (
@@ -1186,12 +1206,12 @@ export const Chat = () => {
                     value={messageInput}
                     onChange={handleMessageInputChange}
                     placeholder="Type a message..."
-                    className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="flex-1 px-3 md:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm md:text-base"
                   />
                   <button
                     type="submit"
                     disabled={!messageInput.trim()}
-                    className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                    className="px-4 md:px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm md:text-base"
                   >
                     Send
                   </button>
