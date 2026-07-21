@@ -37,7 +37,7 @@ const TABLES = {
   OTPS: process.env.DYNAMODB_OTPS_TABLE || 'nexus-otps'
 };
 
-// MongoDB Models (these are the existing Mongoose models)
+// MongoDB Models (define schemas inline)
 let MongoUser, MongoMessage, MongoConversation, MongoOTP;
 
 async function initializeMongo() {
@@ -47,11 +47,75 @@ async function initializeMongo() {
     await mongoose.connect(mongoUri);
     console.log('✅ MongoDB connected');
 
-    // Import existing models
-    MongoUser = mongoose.model('User');
-    MongoMessage = mongoose.model('Message');
-    MongoConversation = mongoose.model('Conversation');
-    MongoOTP = mongoose.model('OTP');
+    // Define Mongoose schemas
+    const userSchema = new mongoose.Schema({
+      email: String,
+      name: String,
+      password: String,
+      isEmailVerified: Boolean,
+      avatar: String,
+      status: String,
+      publicKey: String,
+      secretKey: String,
+      contacts: [mongoose.Schema.Types.ObjectId],
+      contactNicknames: mongoose.Schema.Types.Mixed,
+      blockedUsers: [mongoose.Schema.Types.ObjectId],
+      isOnline: Boolean,
+      lastSeen: Date,
+      accountLockoutUntil: Date,
+      failedOtpAttempts: Number,
+      createdAt: Date
+    }, { timestamps: true });
+
+    const conversationSchema = new mongoose.Schema({
+      type: String,
+      name: String,
+      avatar: String,
+      participants: [mongoose.Schema.Types.ObjectId],
+      admin: mongoose.Schema.Types.ObjectId,
+      lastMessage: mongoose.Schema.Types.ObjectId,
+      lastMessageAt: Date,
+      createdBy: mongoose.Schema.Types.ObjectId,
+      deletedFor: [mongoose.Schema.Types.ObjectId],
+      createdAt: Date,
+      updatedAt: Date
+    }, { timestamps: true });
+
+    const messageSchema = new mongoose.Schema({
+      conversation: mongoose.Schema.Types.ObjectId,
+      sender: mongoose.Schema.Types.ObjectId,
+      type: String,
+      content: String,
+      fileUrl: String,
+      fileName: String,
+      fileSize: Number,
+      s3Key: String,
+      readBy: [{
+        user: mongoose.Schema.Types.ObjectId,
+        readAt: Date
+      }],
+      deliveredTo: [mongoose.Schema.Types.ObjectId],
+      deletedFor: [mongoose.Schema.Types.ObjectId],
+      createdAt: Date,
+      updatedAt: Date
+    }, { timestamps: true });
+
+    const otpSchema = new mongoose.Schema({
+      email: String,
+      otp: String,
+      attempts: Number,
+      maxAttempts: Number,
+      expiresAt: Date,
+      createdAt: Date
+    }, { timestamps: true });
+
+    // Register models
+    MongoUser = mongoose.model('User', userSchema);
+    MongoMessage = mongoose.model('Message', messageSchema);
+    MongoConversation = mongoose.model('Conversation', conversationSchema);
+    MongoOTP = mongoose.model('OTP', otpSchema);
+
+    console.log('✅ Mongoose models registered');
   } catch (error) {
     console.error('❌ MongoDB connection failed:', error.message);
     process.exit(1);
