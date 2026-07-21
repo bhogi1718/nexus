@@ -85,7 +85,7 @@ export async function generateAndSaveOTP(email) {
     // Delete any existing OTP for this email
     await OTP.deleteMany({ email: email.toLowerCase() });
 
-    const otp = generateOTP(4);
+    const otp = generateOTP();
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 minutes
 
     const otpDoc = new OTP({
@@ -95,10 +95,15 @@ export async function generateAndSaveOTP(email) {
     });
 
     await otpDoc.save();
-    console.log(`📧 OTP generated for ${email}`);
+    console.log(`📧 OTP generated for ${email}: ${otp}`);
 
-    // Send via SES
-    await sendOTPViaEmail(email, otp);
+    // Try to send via SES, but don't fail if it doesn't work (dev mode)
+    if (process.env.NODE_ENV === 'production') {
+      await sendOTPViaEmail(email, otp);
+    } else {
+      // Development: log the OTP to console instead of sending
+      console.log(`💡 [DEV MODE] Use OTP: ${otp}`);
+    }
 
     return otpDoc;
   } catch (error) {
