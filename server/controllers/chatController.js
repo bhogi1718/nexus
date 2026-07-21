@@ -372,16 +372,23 @@ export const getContacts = async (req, res) => {
     const contactIds = me.contacts || [];
     const contactUsers = await Promise.all(
       contactIds.map(async (contactId) => {
-        const contact = await User.findById(contactId);
-        return contact ? {
-          id: contact.userId,
-          name: contact.name,
-          email: contact.email,
-          avatar: contact.avatar,
-          status: contact.status,
-          isOnline: contact.isOnline,
-          nickname: me.contactNicknames?.[contact.userId] || null
-        } : null;
+        try {
+          const contact = await User.findById(contactId);
+          if (!contact) return null;
+
+          return {
+            id: contact.userId,
+            name: contact.name,
+            email: contact.email,
+            avatar: contact.avatar || null,
+            status: contact.status || "Hey there! I'm using Nexus",
+            isOnline: contact.isOnline || false,
+            nickname: (me.contactNicknames && me.contactNicknames[contact.userId]) || null
+          };
+        } catch (err) {
+          console.error(`Error fetching contact ${contactId}:`, err);
+          return null;
+        }
       })
     );
 
