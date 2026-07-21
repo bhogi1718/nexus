@@ -17,6 +17,10 @@ export class OTP {
   }
 
   static async findOne(filter) {
+    if (!filter || !filter.email) {
+      return null;
+    }
+
     const otps = await db.query(
       TABLES.OTPS,
       'email = :email',
@@ -29,12 +33,12 @@ export class OTP {
   }
 
   static async deleteMany(filter) {
-    if (filter.email) {
+    if (filter && filter.email) {
       const otps = await db.query(
         TABLES.OTPS,
         'email = :email',
         {},
-        { ':email': filter.email },
+        { ':email': filter.email.toLowerCase() },
         'email-index'
       );
 
