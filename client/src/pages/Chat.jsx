@@ -110,7 +110,7 @@ export const Chat = () => {
   useEffect(() => {
     // Guarantee the socket exists before registering listeners —
     // onMessageReceive silently no-ops without one
-    const token = localStorage.getItem('token');
+    const token = localStorage.getItem('accessToken');
     if (token) {
       initializeSocket(token);
     }
