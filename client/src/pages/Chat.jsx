@@ -52,6 +52,7 @@ export const Chat = () => {
   const [typingUsers, setTypingUsers] = useState([]);
   const [deletingConversationId, setDeletingConversationId] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [showSidebar, setShowSidebar] = useState(false);
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -754,8 +755,6 @@ export const Chat = () => {
       </div>
     );
   }
-
-  const [showSidebar, setShowSidebar] = useState(false);
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
