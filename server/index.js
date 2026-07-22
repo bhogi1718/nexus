@@ -65,11 +65,18 @@ setIO(io);
 app.use(requestLogger);
 
 // Security Middleware
-// Disable COOP/COEP for development (browsers reject them on insecure origins like chat:1)
-app.use(helmet({
-  crossOriginOpenerPolicy: isProduction ? { policy: 'same-origin' } : false,
-  crossOriginEmbedderPolicy: false
-}));
+// Only set COOP for secure (HTTPS) connections; disable for insecure origins
+const shouldSetCOOP = (req) => {
+  return req.protocol === 'https' || req.hostname === 'localhost' || req.hostname.startsWith('127.');
+};
+
+app.use((req, res, next) => {
+  const helmetOptions = {
+    crossOriginOpenerPolicy: shouldSetCOOP(req) ? { policy: 'same-origin' } : false,
+    crossOriginEmbedderPolicy: false
+  };
+  helmet(helmetOptions)(req, res, next);
+});
 
 // Rate Limiters — strict in production, generous in development
 // (dev traffic comes from one IP with multiple test accounts and hits the API constantly)
