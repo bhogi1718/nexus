@@ -3,6 +3,7 @@ import { useAuth } from '../hooks/useAuth';
 import chatAPI from '../services/chatService';
 import { MediaUploader } from '../components/MediaUploader';
 import { MediaMessage } from '../components/MediaMessage';
+import { InstallPrompt } from '../components/InstallPrompt';
 import { encryptMessage, decryptMessage, getKeys } from '../services/cryptoService';
 import {
   getSocket,
@@ -674,6 +675,7 @@ export const Chat = () => {
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+      <InstallPrompt />
       {/* Header */}
       <nav className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 py-2.5 sm:px-6 lg:py-4 flex justify-between items-center">
