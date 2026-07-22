@@ -799,8 +799,8 @@ export const Chat = () => {
           />
         )}
 
-        {/* Conversations Sidebar - Mobile overlay + Desktop sidebar */}
-        <div className={`${showSidebar ? 'fixed inset-0 z-40' : 'hidden'} lg:relative lg:w-80 lg:h-auto lg:flex lg:flex-col bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden`}>
+        {/* Conversations Sidebar - Mobile full-screen overlay + Desktop sidebar */}
+        <div className={`${showSidebar ? 'fixed inset-0 z-40 top-0 left-0 w-screen h-screen' : 'hidden'} lg:relative lg:w-80 lg:h-auto lg:flex lg:flex-col bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden`}>
           {/* Your Profile - Mobile responsive */}
           <div className="p-3 sm:p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-2 sm:gap-3">
@@ -840,19 +840,19 @@ export const Chat = () => {
           </div>
 
           {/* Add contact + search contacts - Mobile responsive */}
-          <div className="p-3 sm:p-4 border-b border-gray-100 space-y-2">
-            <form onSubmit={handleAddContact} className="flex gap-1.5 sm:gap-2">
+          <div className="p-2.5 sm:p-4 border-b border-gray-100 space-y-2">
+            <form onSubmit={handleAddContact} className="flex gap-1.5">
               <input
                 type="email"
-                placeholder="Add contact by email..."
+                placeholder="Add contact..."
                 value={contactEmail}
                 onChange={(e) => setContactEmail(e.target.value)}
-                className="flex-1 px-2.5 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-xs sm:text-sm"
+                className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-xs sm:text-sm"
               />
               <button
                 type="submit"
                 disabled={addingContact || !contactEmail.trim()}
-                className="px-3 sm:px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors text-base min-w-[40px] min-h-[40px] flex items-center justify-center"
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors text-base min-w-[40px] min-h-[40px] flex items-center justify-center"
                 title="Add contact"
               >
                 +
@@ -865,10 +865,10 @@ export const Chat = () => {
             )}
             <input
               type="text"
-              placeholder="Search your contacts..."
+              placeholder="Search..."
               value={searchQuery}
               onChange={handleSearch}
-              className="w-full px-2.5 sm:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-xs sm:text-sm"
+              className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-xs sm:text-sm"
             />
           </div>
 
@@ -902,7 +902,7 @@ export const Chat = () => {
                     <button
                       key={conversation._id}
                       onClick={() => loadMessages(conversation._id)}
-                      className={`w-full p-3 sm:p-4 text-left border-b border-gray-100 transition-colors min-h-[60px] sm:min-h-[70px] flex flex-col justify-center ${
+                      className={`w-full p-3 sm:p-4 text-left border-b border-gray-100 transition-colors min-h-[70px] sm:min-h-[75px] flex flex-col justify-center active:bg-gray-100 ${
                         selectedConversation === conversation._id
                           ? 'bg-blue-50'
                           : hasUnread
@@ -910,22 +910,22 @@ export const Chat = () => {
                             : 'hover:bg-gray-50'
                       }`}
                     >
-                      <div className="flex items-center justify-between gap-1.5 sm:gap-2">
-                        <p className={`truncate flex items-center gap-1 flex-1 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'} text-xs sm:text-sm`}>
+                      <div className="flex items-center justify-between gap-2">
+                        <p className={`truncate flex items-center gap-1.5 flex-1 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'} text-sm sm:text-base`}>
                           {getConversationName(conversation)}
                           {isUnknownSender(conversation) && (
-                            <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[9px] sm:text-[10px] font-semibold rounded-full flex-shrink-0">
+                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full flex-shrink-0">
                               Unknown
                             </span>
                           )}
                         </p>
                         {hasUnread && (
-                          <span className="flex-shrink-0 min-w-[20px] h-5 px-1 bg-blue-600 text-white text-[10px] sm:text-xs font-bold rounded-full flex items-center justify-center">
+                          <span className="flex-shrink-0 min-w-[24px] h-6 px-1.5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
                             {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
                           </span>
                         )}
                       </div>
-                      <p className={`text-xs sm:text-sm truncate ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'} line-clamp-1`}>
+                      <p className={`text-xs sm:text-sm truncate mt-1 ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'} line-clamp-1`}>
                         {conversation.lastMessage?.undecryptable
                           ? '🔒 Encrypted message'
                           : conversation.lastMessage?.content || 'No messages yet'}
@@ -1026,17 +1026,17 @@ export const Chat = () => {
                           </div>
                         </div>
 
-                        {/* Add unknown sender to contacts - Hidden on mobile, show on lg+ */}
+                                        {/* Add unknown sender to contacts - Icon on mobile, text on lg+ */}
                         {conv.type === 'private' && isUnknownSender(conv) && (
                           <button
                             onClick={() => handleAddUnknownContact(otherUser)}
-                            className="hidden sm:flex px-2 sm:px-3 py-1.5 sm:py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs sm:text-sm font-semibold rounded-lg transition-colors flex-shrink-0 items-center gap-1 min-h-[40px]"
+                            className="p-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex-shrink-0 items-center justify-center min-h-[40px] min-w-[40px] lg:px-3 lg:flex lg:gap-1 hidden sm:flex"
                             title="Add this person to your contacts"
                           >
-                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <svg className="w-4 h-4 lg:w-4 lg:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
                             </svg>
-                            Add to contacts
+                            <span className="hidden lg:inline text-sm font-semibold">Add to contacts</span>
                           </button>
                         )}
 
@@ -1078,10 +1078,10 @@ export const Chat = () => {
                 })}
               </div>
 
-              {/* Messages - Mobile: tight spacing, lg+: comfortable spacing */}
-              <div className="flex-1 overflow-y-auto p-2 sm:p-3 lg:p-6 space-y-2 sm:space-y-3 bg-gray-50" style={{ scrollBehavior: 'smooth' }}>
+              {/* Messages - Mobile: optimized spacing */}
+              <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-2.5 sm:space-y-3 lg:space-y-4 bg-gray-50" style={{ scrollBehavior: 'smooth' }}>
                 {messages.length === 0 ? (
-                  <div className="text-center text-gray-500 py-12">No messages yet. Start the conversation!</div>
+                  <div className="text-center text-gray-500 py-12 text-sm sm:text-base">No messages yet. Start the conversation!</div>
                 ) : (
                   messages.map(message => {
                     if (!message || !message.sender) {
@@ -1127,7 +1127,7 @@ export const Chat = () => {
                           </div>
                         )}
                         <div
-                          className={`max-w-xs sm:max-w-sm lg:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm text-sm sm:text-base ${
+                          className={`max-w-[85%] sm:max-w-sm lg:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm text-sm sm:text-base leading-relaxed ${
                             isCurrentUser
                               ? 'bg-blue-600 text-white rounded-br-none'
                               : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
@@ -1206,18 +1206,18 @@ export const Chat = () => {
               </div>
 
               {/* Input Area - Mobile optimized */}
-              <form onSubmit={handleSendMessage} className="p-2 sm:p-3 lg:p-4 border-t border-gray-100 bg-white">
+              <form onSubmit={handleSendMessage} className="p-3 sm:p-4 lg:p-4 border-t border-gray-100 bg-white flex-shrink-0">
                 {error && (
-                  <div className="mb-2 sm:mb-3 p-2 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-lg flex items-center gap-2">
+                  <div className="mb-2 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-lg flex items-center gap-2">
                     <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                     </svg>
                     {error}
                   </div>
                 )}
-                <div className="flex gap-1.5 sm:gap-2">
-                  {/* Media Upload Button - 40px touch target on mobile */}
-                  <div className="flex-shrink-0 min-w-[40px] h-[40px] flex items-center justify-center">
+                <div className="flex gap-2 items-end">
+                  {/* Media Upload Button - Touch target */}
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
                     <MediaUploader
                       ref={fileInputRef}
                       onUploadSuccess={handleMediaUploadSuccess}
@@ -1231,14 +1231,14 @@ export const Chat = () => {
                     value={messageInput}
                     onChange={handleMessageInputChange}
                     placeholder="Type a message..."
-                    className="flex-1 px-2.5 sm:px-3 lg:px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-xs sm:text-sm lg:text-base"
+                    className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base min-h-[40px]"
                   />
 
-                  {/* Send Button - 40px touch target on mobile */}
+                  {/* Send Button */}
                   <button
                     type="submit"
                     disabled={!messageInput.trim()}
-                    className="px-3 sm:px-4 lg:px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-xs sm:text-sm lg:text-base min-w-[40px] min-h-[40px] flex items-center justify-center"
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm min-w-[40px] min-h-[40px] flex items-center justify-center"
                   >
                     Send
                   </button>
