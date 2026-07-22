@@ -65,7 +65,11 @@ setIO(io);
 app.use(requestLogger);
 
 // Security Middleware
-app.use(helmet()); // Secure HTTP headers
+// Disable COOP/COEP for development (browsers reject them on insecure origins like chat:1)
+app.use(helmet({
+  crossOriginOpenerPolicy: isProduction ? { policy: 'same-origin' } : false,
+  crossOriginEmbedderPolicy: false
+}));
 
 // Rate Limiters — strict in production, generous in development
 // (dev traffic comes from one IP with multiple test accounts and hits the API constantly)
