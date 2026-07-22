@@ -35,35 +35,27 @@ export const Chat = () => {
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
-  const [sendingMessage, setSendingMessage] = useState(false);
   const [error, setError] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [contactEmail, setContactEmail] = useState('');
   const [addingContact, setAddingContact] = useState(false);
   const [contactMessage, setContactMessage] = useState('');
-  const [showProfile, setShowProfile] = useState(false);
   const [contacts, setContacts] = useState([]);
   const [loadingContacts, setLoadingContacts] = useState(false);
-  // IDs of my contacts — used to flag conversations with unknown senders
   const [contactIds, setContactIds] = useState(new Set());
-  // My personal nicknames for contacts: { contactId: nickname }
   const [contactNicknames, setContactNicknames] = useState({});
   const [typingUsers, setTypingUsers] = useState([]);
-  const [deletingConversationId, setDeletingConversationId] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
-  const [showSidebar, setShowSidebar] = useState(false);
+  const [activeTab, setActiveTab] = useState('chats'); // Mobile tabs: 'chats', 'contacts', 'profile'
   const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
-  // Refs so the persistent socket listener always sees the CURRENT conversation
-  // (state values inside the listener closure would be stale)
   const selectedConversationRef = useRef(null);
   const activeConversationRef = useRef(null);
 
   useEffect(() => {
     loadConversations();
-    // Load contact IDs (to flag unknown senders) and nicknames
     chatAPI.getContacts()
       .then(res => {
         const list = res.data.contacts || [];
@@ -75,7 +67,6 @@ export const Chat = () => {
       .catch(() => {});
   }, []);
 
-  // Listen for user online/offline status changes
   useEffect(() => {
     const handleUserOnline = ({ userId }) => {
       setConversations(prev => prev.map(conv => ({
@@ -104,13 +95,7 @@ export const Chat = () => {
     };
   }, []);
 
-  // Register ONE persistent message listener for the whole component lifetime.
-  // Registering/removing listeners per conversation-click was fragile: any
-  // mis-timed teardown left the socket in the room with no handler, so
-  // messages arrived but never rendered until a refresh.
   useEffect(() => {
-    // Guarantee the socket exists before registering listeners —
-    // onMessageReceive silently no-ops without one
     const token = localStorage.getItem('accessToken');
     if (token) {
       initializeSocket(token);
@@ -120,12 +105,10 @@ export const Chat = () => {
       const currentConvId = selectedConversationRef.current;
       const conversation = activeConversationRef.current;
 
-      // Only render messages for the conversation currently open
       if (!currentConvId || String(message.conversation) !== String(currentConvId)) {
         return;
       }
 
-      // Ensure sender has the full object structure
       if (message.sender && typeof message.sender === 'object' && !message.sender._id && message.sender.id) {
         message.sender._id = message.sender.id;
       }
@@ -135,8 +118,6 @@ export const Chat = () => {
 
       setMessages(prev => {
         if (isMessageFromCurrentUser) {
-          // Replace the pending optimistic message (its content is already
-          // plaintext); adopt the server's populated sender object
           const optimisticMsg = prev.find(m => m.isOptimistic);
           if (optimisticMsg) {
             return prev.map(m =>
@@ -152,14 +133,11 @@ export const Chat = () => {
                 : m
             );
           }
-          // Own message sent from another tab/device — decryption works for
-          // own messages too, so just add it
           return [...prev, decryptedMsg];
         }
         return [...prev, decryptedMsg];
       });
 
-      // Update the sidebar preview
       let previewContent = decryptedMsg.undecryptable ? '🔒 Encrypted message' : decryptedMsg.content;
       if (message.fileUrl && message.fileName) {
         previewContent = message.fileName;
@@ -181,20 +159,15 @@ export const Chat = () => {
       setTypingUsers(prev => prev.filter(id => id !== userId));
     });
 
-    // Cross-conversation notifications: bump unread badge + preview for
-    // conversations that are NOT currently open
     onConversationNotify((message) => {
       const openId = selectedConversationRef.current;
       if (String(message.conversation) === String(openId)) {
-        // Visible right now — mark it read server-side so the count stays 0
         chatAPI.markConversationRead(openId).catch(() => {});
         return;
       }
       setConversations(prev => {
         const exists = prev.some(conv => String(conv._id) === String(message.conversation));
         if (!exists) {
-          // Brand-new conversation (someone messaged us for the first time) —
-          // it's not in our list yet, so refetch from the server
           setTimeout(() => loadConversations(), 0);
           return prev;
         }
@@ -213,8 +186,6 @@ export const Chat = () => {
       });
     });
 
-    // Read receipts: when the other person reads the open conversation,
-    // flip our sent messages to read (blue ticks)
     onMessagesRead(({ conversationId, readerId }) => {
       if (String(conversationId) !== String(selectedConversationRef.current)) return;
       setMessages(prev => prev.map(m => {
@@ -234,12 +205,10 @@ export const Chat = () => {
     };
   }, []);
 
-  // Auto-scroll to bottom when messages change
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  // Auto-clear errors after 3 seconds
   useEffect(() => {
     if (error) {
       const timer = setTimeout(() => setError(''), 3000);
@@ -247,17 +216,47 @@ export const Chat = () => {
     }
   }, [error]);
 
+  const looksEncrypted = (content) =>
+    typeof content === 'string' && content.length >= 50 && /^[A-Za-z0-9+/]+=*$/.test(content);
+
+  const decryptMessageIfNeeded = (message, conversation) => {
+    try {
+      if (!conversation || conversation.type !== 'private' || conversation.participants?.length !== 2) {
+        return message;
+      }
+      if (!message?.content || message.fileUrl) {
+        return message;
+      }
+
+      const keys = getKeys();
+      const otherParticipant = conversation.participants.find(
+        p => String(p._id) !== String(user?.id)
+      );
+
+      if (!keys?.secretKey || !otherParticipant?.publicKey) {
+        return message;
+      }
+
+      try {
+        const decrypted = decryptMessage(message.content, otherParticipant.publicKey, keys.secretKey);
+        return { ...message, content: decrypted, isDecrypted: true };
+      } catch (e) {
+        return { ...message, undecryptable: looksEncrypted(message.content) };
+      }
+    } catch (err) {
+      console.error('Decryption error:', err);
+      return message;
+    }
+  };
+
   const loadConversations = async () => {
     try {
       setLoading(true);
       setError('');
       const response = await chatAPI.getConversations();
-
-      // Fetch online users and update participants
       const onlineResponse = await chatAPI.getOnlineUsers();
       const onlineUsersSet = new Set(onlineResponse.data.onlineUsers);
 
-      // Update conversations with online status and decrypt last-message previews
       const conversationsWithStatus = response.data.conversations.map(conv => {
         const withStatus = {
           ...conv,
@@ -282,70 +281,22 @@ export const Chat = () => {
     }
   };
 
-  // Heuristic: ciphertext is nonce(24) + box overhead(16) minimum, base64-encoded
-  const looksEncrypted = (content) =>
-    typeof content === 'string' && content.length >= 50 && /^[A-Za-z0-9+/]+=*$/.test(content);
-
-  // Decrypt a message in a 1:1 private chat.
-  // NaCl box uses a shared secret that is symmetric: box(theirPublic, mySecret)
-  // equals box(myPublic, theirSecret). So BOTH sent and received messages
-  // decrypt with the other participant's public key + this user's secret key.
-  const decryptMessageIfNeeded = (message, conversation) => {
-    try {
-      if (!conversation || conversation.type !== 'private' || conversation.participants?.length !== 2) {
-        return message;
-      }
-      if (!message?.content || message.fileUrl) {
-        return message; // media messages are not encrypted
-      }
-
-      const keys = getKeys();
-      const otherParticipant = conversation.participants.find(
-        p => String(p._id) !== String(user?.id)
-      );
-
-      if (!keys?.secretKey || !otherParticipant?.publicKey) {
-        return message;
-      }
-
-      try {
-        const decrypted = decryptMessage(message.content, otherParticipant.publicKey, keys.secretKey);
-        return { ...message, content: decrypted, isDecrypted: true };
-      } catch (e) {
-        // Either a plaintext message (pre-encryption) or encrypted with rotated/lost keys
-        return { ...message, undecryptable: looksEncrypted(message.content) };
-      }
-    } catch (err) {
-      console.error('Decryption error:', err);
-      return message;
-    }
-  };
-
   const loadMessages = async (conversationId) => {
     try {
-      console.log('loadMessages called with:', { conversationId, type: typeof conversationId, length: conversationId?.length });
-
-      // Leave previous conversation room (the persistent listener stays)
       if (selectedConversation) {
         leaveConversation(selectedConversation);
       }
 
-      // Load messages from REST API
       const response = await chatAPI.getMessages(conversationId);
-
-      // Resolve the conversation: state can be stale for just-created
-      // conversations, so fall back to fetching it directly
       let conversation = conversations.find(c => c._id === conversationId);
       if (!conversation) {
         const details = await chatAPI.getConversationDetails(conversationId);
         conversation = details.data.conversation;
       }
 
-      // Point the persistent socket listener at this conversation
       selectedConversationRef.current = conversationId;
       activeConversationRef.current = conversation;
 
-      // Decrypt messages if they're from a 1:1 chat
       const decryptedMessages = response.data.messages.map(msg =>
         decryptMessageIfNeeded(msg, conversation)
       );
@@ -353,12 +304,9 @@ export const Chat = () => {
       setMessages(decryptedMessages);
       setSelectedConversation(conversationId);
       setTypingUsers([]);
-      setShowSidebar(false); // Close sidebar on mobile after selecting conversation
 
-      // Join new conversation room
       joinConversation(conversationId);
 
-      // Mark as read: clear the badge locally and persist server-side
       setConversations(prev => prev.map(c =>
         c._id === conversationId ? { ...c, unreadCount: 0 } : c
       ));
@@ -385,12 +333,10 @@ export const Chat = () => {
         return;
       }
 
-      // Find the conversation to determine if it's 1:1 or group
       const conversation = conversations.find(c => c._id === selectedConversation);
       let contentToSend = messageContent;
       let isEncrypted = false;
 
-      // For 1:1 chats, encrypt the message on frontend
       if (conversation && conversation.type === 'private' && conversation.participants.length === 2) {
         try {
           const keys = getKeys();
@@ -412,13 +358,11 @@ export const Chat = () => {
         }
       }
 
-      // Add optimistic message to UI immediately (show plaintext to sender).
-      // Normalize sender to include _id — the auth user object only has `id`
       const optimisticMessage = {
         _id: 'temp-' + Date.now(),
         conversation: selectedConversation,
         sender: { ...user, _id: user.id },
-        content: messageContent,  // Keep plaintext for sender display
+        content: messageContent,
         createdAt: new Date(),
         isOptimistic: true,
         isEncrypted
@@ -426,13 +370,8 @@ export const Chat = () => {
       setMessages(prev => [...prev, optimisticMessage]);
 
       try {
-        // Use the sendMessage function from socket service with callback support
-        console.log('🚀 Sending message via Socket.io...');
         await sendMessage(selectedConversation, contentToSend);
-        console.log('✅ Message send completed');
       } catch (err) {
-        console.error('❌ Send failed, removing optimistic message:', err);
-        // Remove optimistic message on error
         setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
         setError(err.message || 'Failed to send message');
         setMessageInput(messageContent);
@@ -464,16 +403,13 @@ export const Chat = () => {
   const handleMessageInputChange = (e) => {
     setMessageInput(e.target.value);
 
-    // Emit typing start
     if (selectedConversation) {
       startTyping(selectedConversation);
 
-      // Clear previous timeout
       if (typingTimeoutRef.current) {
         clearTimeout(typingTimeoutRef.current);
       }
 
-      // Emit typing stop after 1 second of inactivity
       typingTimeoutRef.current = setTimeout(() => {
         stopTyping(selectedConversation);
       }, 1000);
@@ -483,7 +419,6 @@ export const Chat = () => {
   const handleMediaUploadSuccess = async (mediaData) => {
     if (!selectedConversation) return;
 
-    // Add optimistic message to UI immediately
     const optimisticMessage = {
       _id: 'temp-' + Date.now(),
       conversation: selectedConversation,
@@ -499,7 +434,6 @@ export const Chat = () => {
     setMessages(prev => [...prev, optimisticMessage]);
 
     try {
-      // Send media message via Socket.io with S3 details
       await sendMessage(selectedConversation, mediaData.fileName, {
         fileUrl: mediaData.url,
         fileName: mediaData.fileName,
@@ -508,7 +442,6 @@ export const Chat = () => {
         s3Key: mediaData.s3Key
       });
     } catch (err) {
-      // Remove optimistic message on error
       setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
       setError(err.message || 'Failed to send media');
     }
@@ -552,8 +485,6 @@ export const Chat = () => {
   const startConversation = async (userId) => {
     try {
       const response = await chatAPI.getOrCreateConversation(userId);
-      console.log('API Response:', response.data);
-      console.log('Conversation ID:', response.data.conversation._id);
       const conversationId = response.data.conversation._id;
       if (!conversationId) {
         setError('Invalid conversation response from server');
@@ -569,20 +500,18 @@ export const Chat = () => {
     }
   };
 
-  // Display name for another user: my nickname for them wins over their real name
   const displayName = (person) => {
     if (!person) return 'User';
     return contactNicknames[String(person._id || person.id)] || person.name || 'User';
   };
 
-  // Prompt for and save a nickname for a contact
   const handleSetNickname = async (contact) => {
     const current = contactNicknames[String(contact._id)] || '';
     const input = window.prompt(
       `Nickname for ${contact.name} (leave empty to remove):`,
       current
     );
-    if (input === null) return; // cancelled
+    if (input === null) return;
 
     try {
       const response = await chatAPI.setContactNickname(contact._id, input);
@@ -603,19 +532,16 @@ export const Chat = () => {
     }
   };
 
-  // Get the other participant of a private conversation
   const getOtherParticipant = (conv) => {
     if (!conv || conv.type !== 'private') return null;
     return conv.participants?.find(p => String(p._id) !== String(user?.id)) || null;
   };
 
-  // True when the other participant of a private chat is not in my contacts
   const isUnknownSender = (conv) => {
     const other = getOtherParticipant(conv);
     return !!other && !contactIds.has(String(other._id));
   };
 
-  // Add a contact by exact email, then open a chat with them
   const handleAddContact = async (e) => {
     e.preventDefault();
     if (!contactEmail.trim()) return;
@@ -628,7 +554,6 @@ export const Chat = () => {
       setContactEmail('');
       setContactMessage(`✓ ${response.data.contact.name} added`);
       setTimeout(() => setContactMessage(''), 3000);
-      // Open a conversation with the new contact right away
       startConversation(response.data.contact._id);
     } catch (err) {
       setContactMessage(err.response?.data?.message || 'Failed to add contact');
@@ -638,7 +563,6 @@ export const Chat = () => {
     }
   };
 
-  // Add an unknown sender to contacts directly from their conversation
   const handleAddUnknownContact = async (otherUser) => {
     if (!otherUser?.email) return;
     try {
@@ -649,13 +573,12 @@ export const Chat = () => {
     }
   };
 
-  // Open the profile modal and load contacts
   const handleOpenProfile = async () => {
-    setShowProfile(true);
     setLoadingContacts(true);
     try {
       const response = await chatAPI.getContacts();
       setContacts(response.data.contacts || []);
+      setActiveTab('profile');
     } catch (err) {
       console.error('Failed to load contacts:', err);
       setContacts([]);
@@ -678,7 +601,6 @@ export const Chat = () => {
     }
   };
 
-  // Close the open chat window without deleting anything
   const handleCloseChat = () => {
     if (selectedConversation) {
       leaveConversation(selectedConversation);
@@ -688,6 +610,7 @@ export const Chat = () => {
     setSelectedConversation(null);
     setMessages([]);
     setTypingUsers([]);
+    setActiveTab('chats');
   };
 
   const handleDeleteConversation = async (conversationId) => {
@@ -695,20 +618,15 @@ export const Chat = () => {
       return;
     }
 
-    setDeletingConversationId(conversationId);
     try {
       await chatAPI.deleteConversation(conversationId);
       setConversations(prev => prev.filter(conv => conv._id !== conversationId));
-      selectedConversationRef.current = null;
-      activeConversationRef.current = null;
       setSelectedConversation(null);
       setMessages([]);
       setError('');
     } catch (err) {
       setError('Failed to delete conversation');
       console.error(err);
-    } finally {
-      setDeletingConversationId(null);
     }
   };
 
@@ -724,10 +642,8 @@ export const Chat = () => {
         return 'Unknown';
       }
 
-      // Find the participant that is NOT the current user
       const otherUser = conversation.participants.find(p => {
         if (!p || !p._id) return false;
-        // Convert both to string for reliable comparison
         const pId = String(p._id);
         const userId = String(user.id);
         return pId !== userId;
@@ -740,9 +656,9 @@ export const Chat = () => {
     }
   };
 
-  if (loading) {
+  if (loading && conversations.length === 0) {
     return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
           <div className="mb-4">
             <svg className="animate-spin h-12 w-12 text-blue-600 mx-auto" fill="none" viewBox="0 0 24 24">
@@ -758,89 +674,57 @@ export const Chat = () => {
 
   return (
     <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
-      {/* Navigation - Mobile responsive */}
+      {/* Header */}
       <nav className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 lg:px-6 py-2.5 sm:py-3 lg:py-4 flex justify-between items-center gap-2">
-          <div className="flex items-center gap-1.5 sm:gap-2 lg:gap-3 flex-1 min-w-0">
-            <div className="inline-flex items-center justify-center w-9 sm:w-10 h-9 sm:h-10 bg-blue-600 rounded-lg flex-shrink-0">
+        <div className="max-w-7xl mx-auto px-4 py-2.5 sm:px-6 lg:py-4 flex justify-between items-center">
+          <div className="flex items-center gap-2 flex-1">
+            <div className="inline-flex items-center justify-center w-8 sm:w-10 h-8 sm:h-10 bg-blue-600 rounded-lg flex-shrink-0">
               <svg className="w-5 sm:w-6 h-5 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
-            <h1 className="text-base sm:text-lg lg:text-2xl font-bold text-gray-900">Nexus</h1>
+            <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Nexus</h1>
           </div>
-          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-            <button
-              onClick={() => setShowSidebar(!showSidebar)}
-              className="lg:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-              </svg>
-            </button>
-            <button
-              onClick={logout}
-              className="px-2.5 sm:px-3 lg:px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors text-xs sm:text-sm lg:text-base min-h-[40px] flex items-center justify-center"
-            >
-              Logout
-            </button>
-          </div>
+          <button
+            onClick={logout}
+            className="px-3 sm:px-4 py-2 bg-red-600 hover:bg-red-700 text-white font-semibold rounded-lg transition-colors text-xs sm:text-sm min-h-[40px] flex items-center justify-center"
+          >
+            Logout
+          </button>
         </div>
       </nav>
 
-      {/* Main Chat Area - Mobile-first: stack vertically, lg: side-by-side */}
+      {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden lg:flex-row lg:gap-6 lg:p-6">
-        {/* Sidebar Overlay Backdrop (mobile only) */}
-        {showSidebar && (
-          <div
-            className="fixed inset-0 bg-black/40 z-30 lg:hidden"
-            onClick={() => setShowSidebar(false)}
-            style={{ pointerEvents: 'auto' }}
-          />
-        )}
-
-        {/* Conversations Sidebar - Mobile full-screen overlay + Desktop sidebar */}
-        <div className={`${showSidebar ? 'fixed inset-0 z-40 top-0 left-0 w-screen h-screen' : 'hidden'} lg:relative lg:w-80 lg:h-auto lg:flex lg:flex-col bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 flex flex-col overflow-hidden`}>
-          {/* Your Profile - Mobile responsive */}
-          <div className="p-3 sm:p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
-            <div className="flex items-center gap-2 sm:gap-3">
-              <div className="w-10 sm:w-12 h-10 sm:h-12 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-full flex items-center justify-center text-white text-sm sm:text-lg font-bold flex-shrink-0">
+        {/* Desktop Sidebar - Hidden on mobile */}
+        <div className="hidden lg:flex lg:w-80 lg:flex-col bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 overflow-hidden flex-shrink-0">
+          {/* Profile Section */}
+          <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-400 to-indigo-600 rounded-full flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
                 {user?.name?.charAt(0).toUpperCase() || 'U'}
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-gray-900 text-xs sm:text-sm truncate">
-                  {user?.name || 'User'}
-                </p>
-                <p className="text-[11px] sm:text-xs text-gray-600 truncate">
-                  {user?.email || 'No email'}
-                </p>
-                <p className="text-[11px] sm:text-xs text-green-600 font-medium flex items-center gap-1 mt-0.5">
-                  <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                  Online
+                <p className="font-semibold text-gray-900 text-sm truncate">{user?.name || 'User'}</p>
+                <p className="text-xs text-gray-600 truncate">{user?.email || 'No email'}</p>
+                <p className="text-xs text-green-600 font-medium flex items-center gap-1 mt-0.5">
+                  <span className="w-2 h-2 bg-green-500 rounded-full"></span> Online
                 </p>
               </div>
               <button
                 onClick={handleOpenProfile}
                 className="p-2 rounded-lg text-blue-600 hover:bg-blue-100 transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center"
-                title="My profile & contacts"
+                title="Contacts"
               >
                 <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
-                </svg>
-              </button>
-              <button
-                onClick={() => setShowSidebar(false)}
-                className="lg:hidden p-2 rounded-lg text-gray-500 hover:bg-gray-200 transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
-              >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 0a3 3 0 11-6 0 3 3 0 016 0z" />
                 </svg>
               </button>
             </div>
           </div>
 
-          {/* Add contact + search contacts - Mobile responsive */}
-          <div className="p-2.5 sm:p-4 border-b border-gray-100 space-y-2">
+          {/* Add Contact + Search */}
+          <div className="p-3 border-b border-gray-100 space-y-2">
             <form onSubmit={handleAddContact} className="flex gap-1.5">
               <input
                 type="email"
@@ -852,8 +736,7 @@ export const Chat = () => {
               <button
                 type="submit"
                 disabled={addingContact || !contactEmail.trim()}
-                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors text-base min-w-[40px] min-h-[40px] flex items-center justify-center"
-                title="Add contact"
+                className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
               >
                 +
               </button>
@@ -872,332 +755,141 @@ export const Chat = () => {
             />
           </div>
 
-          {/* Search Results */}
-          {searchResults.length > 0 && (
-            <div className="flex-1 overflow-y-auto border-b border-gray-100">
-              {searchResults.map(searchUser => (
+          {/* Conversations/Search Results */}
+          <div className="flex-1 overflow-y-auto">
+            {searchResults.length > 0 ? (
+              searchResults.map(searchUser => (
                 <button
                   key={searchUser._id}
                   onClick={() => startConversation(searchUser._id)}
                   className="w-full p-4 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors"
                 >
-                  <p className="font-semibold text-gray-900">{searchUser.name}</p>
-                  <p className="text-sm text-gray-500">{searchUser.email}</p>
+                  <p className="font-semibold text-gray-900 text-sm">{searchUser.name}</p>
+                  <p className="text-xs text-gray-500">{searchUser.email}</p>
                 </button>
-              ))}
-            </div>
-          )}
-
-          {/* Conversations List */}
-          {searchResults.length === 0 && (
-            <div className="flex-1 overflow-y-auto">
-              {loading ? (
-                <div className="p-4 text-center text-gray-500">Loading...</div>
-              ) : conversations.length === 0 ? (
-                <div className="p-4 text-center text-gray-500">No conversations yet</div>
-              ) : (
-                conversations.map(conversation => {
-                  const hasUnread = (conversation.unreadCount || 0) > 0;
-                  return (
-                    <button
-                      key={conversation._id}
-                      onClick={() => loadMessages(conversation._id)}
-                      className={`w-full p-3 sm:p-4 text-left border-b border-gray-100 transition-colors min-h-[70px] sm:min-h-[75px] flex flex-col justify-center active:bg-gray-100 ${
-                        selectedConversation === conversation._id
-                          ? 'bg-blue-50'
-                          : hasUnread
-                            ? 'bg-blue-50/60 border-l-4 border-l-blue-600 hover:bg-blue-50'
-                            : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <p className={`truncate flex items-center gap-1.5 flex-1 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'} text-sm sm:text-base`}>
-                          {getConversationName(conversation)}
-                          {isUnknownSender(conversation) && (
-                            <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full flex-shrink-0">
-                              Unknown
-                            </span>
-                          )}
-                        </p>
-                        {hasUnread && (
-                          <span className="flex-shrink-0 min-w-[24px] h-6 px-1.5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
-                            {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+              ))
+            ) : conversations.length === 0 ? (
+              <div className="p-4 text-center text-gray-500 text-sm">No conversations yet</div>
+            ) : (
+              conversations.map(conversation => {
+                const hasUnread = (conversation.unreadCount || 0) > 0;
+                return (
+                  <button
+                    key={conversation._id}
+                    onClick={() => loadMessages(conversation._id)}
+                    className={`w-full p-3 text-left border-b border-gray-100 transition-colors min-h-[70px] flex flex-col justify-center ${
+                      selectedConversation === conversation._id
+                        ? 'bg-blue-50'
+                        : hasUnread
+                          ? 'bg-blue-50/60 border-l-4 border-l-blue-600 hover:bg-blue-50'
+                          : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <p className={`truncate flex items-center gap-1.5 flex-1 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'} text-sm`}>
+                        {getConversationName(conversation)}
+                        {isUnknownSender(conversation) && (
+                          <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full flex-shrink-0">
+                            Unknown
                           </span>
                         )}
-                      </div>
-                      <p className={`text-xs sm:text-sm truncate mt-1 ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'} line-clamp-1`}>
-                        {conversation.lastMessage?.undecryptable
-                          ? '🔒 Encrypted message'
-                          : conversation.lastMessage?.content || 'No messages yet'}
                       </p>
-                    </button>
-                  );
-                })
-              )}
-            </div>
-          )}
+                      {hasUnread && (
+                        <span className="flex-shrink-0 min-w-[24px] h-6 px-1.5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">
+                          {conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}
+                        </span>
+                      )}
+                    </div>
+                    <p className={`text-xs truncate mt-1 ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'}`}>
+                      {conversation.lastMessage?.undecryptable
+                        ? '🔒 Encrypted message'
+                        : conversation.lastMessage?.content || 'No messages yet'}
+                    </p>
+                  </button>
+                );
+              })
+            )}
+          </div>
         </div>
 
-        {/* Chat Window - Mobile full-width, lg: flex-1 in row layout */}
-        <div
-          className="w-full lg:flex-1 bg-white lg:rounded-2xl lg:shadow-sm lg:border lg:border-gray-100 flex flex-col min-h-0 overflow-hidden relative"
-          onDragEnter={handleDragEnter}
-          onDragLeave={handleDragLeave}
-          onDragOver={handleDragOver}
-          onDrop={handleDrop}
-        >
-          {isDragging && (
-            <div className="absolute inset-0 bg-blue-500 bg-opacity-10 border-2 border-dashed border-blue-500 rounded-2xl flex items-center justify-center z-40 pointer-events-none">
-              <div className="text-center">
-                <svg className="w-16 h-16 text-blue-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-                </svg>
-                <p className="text-blue-600 font-semibold">Drop file to upload</p>
-              </div>
-            </div>
-          )}
+        {/* Mobile Tab Content - Hidden on desktop */}
+        <div className="flex-1 flex flex-col min-h-0 lg:hidden pb-16">
           {selectedConversation ? (
+            /* Chat View */
             <>
               {/* Chat Header */}
-              <div className="p-3 lg:p-4 border-b border-gray-100 bg-white">
+              <div className="p-3 border-b border-gray-100 bg-white flex-shrink-0">
                 {conversations.map(conv => {
                   if (conv._id === selectedConversation) {
-                    const otherUser = conv.type === 'group'
-                      ? null
-                      : conv.participants.find(p => {
-                          if (!p || !p._id) return false;
-                          const pId = String(p._id);
-                          const userId = String(user.id);
-                          return pId !== userId;
-                        });
-
+                    const otherUser = conv.type === 'group' ? null : conv.participants.find(p => String(p._id) !== String(user.id));
                     return (
-                      <div key={conv._id} className="flex items-center justify-between gap-1 sm:gap-2 lg:gap-3">
-                        {/* Back button on mobile - shows when sidebar is hidden */}
+                      <div key={conv._id} className="flex items-center justify-between gap-2">
                         <button
-                          onClick={() => setShowSidebar(true)}
-                          className="lg:hidden p-2.5 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center"
-                          title="Back to conversations"
+                          onClick={handleCloseChat}
+                          className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center"
                         >
                           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
                           </svg>
                         </button>
-
-                        <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                          {/* Avatar - Mobile: 40px, Desktop: 48px */}
-                          <div className="w-9 sm:w-10 lg:w-12 h-9 sm:h-10 lg:h-12 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-sm sm:text-base lg:text-lg font-bold flex-shrink-0">
-                            {conv.type === 'group'
-                              ? conv.name?.charAt(0).toUpperCase() || 'G'
-                              : (otherUser?.name?.charAt(0).toUpperCase() || 'U')}
-                          </div>
-
-                          {/* Profile Info */}
-                          <div className="flex-1 min-w-0">
-                            <h2 className="text-sm sm:text-base lg:text-xl font-bold text-gray-900 truncate">
-                              {getConversationName(conv)}
-                            </h2>
-                            {conv.type === 'group' ? (
-                              <p className="text-xs sm:text-sm text-gray-500">
-                                {conv.participants.length} participants
-                              </p>
-                            ) : (
-                              <div className="flex flex-col gap-0.5">
-                                <p className="text-xs sm:text-sm text-gray-500 flex items-center gap-1 sm:gap-2 flex-wrap">
-                                  <span className="truncate">{otherUser?.email || 'No email'}</span>
-                                  {isUnknownSender(conv) && (
-                                    <span className="px-1.5 py-0.5 bg-amber-100 text-amber-700 text-[10px] font-semibold rounded-full flex-shrink-0">
-                                      Unknown
-                                    </span>
-                                  )}
-                                </p>
-                                <p className="text-[11px] sm:text-xs text-gray-400">
-                                  {otherUser?.isOnline ? (
-                                    <span className="flex items-center gap-1">
-                                      <span className="w-2 h-2 bg-green-500 rounded-full"></span>
-                                      Active now
-                                    </span>
-                                  ) : (
-                                    'Offline'
-                                  )}
-                                </p>
-                              </div>
-                            )}
-                          </div>
+                        <div className="flex-1 min-w-0">
+                          <h2 className="text-base font-bold text-gray-900 truncate">{getConversationName(conv)}</h2>
+                          <p className="text-xs text-gray-500">
+                            {conv.type === 'group' ? `${conv.participants.length} members` : (otherUser?.isOnline ? 'Online' : 'Offline')}
+                          </p>
                         </div>
-
-                                        {/* Add unknown sender to contacts - Icon on mobile, text on lg+ */}
-                        {conv.type === 'private' && isUnknownSender(conv) && (
-                          <button
-                            onClick={() => handleAddUnknownContact(otherUser)}
-                            className="p-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white transition-colors flex-shrink-0 items-center justify-center min-h-[40px] min-w-[40px] lg:px-3 lg:flex lg:gap-1 hidden sm:flex"
-                            title="Add this person to your contacts"
-                          >
-                            <svg className="w-4 h-4 lg:w-4 lg:h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-                            </svg>
-                            <span className="hidden lg:inline text-sm font-semibold">Add to contacts</span>
-                          </button>
-                        )}
-
-                        {/* Close Chat Button - Mobile icon button, 40px touch target */}
-                        <button
-                          onClick={handleCloseChat}
-                          className="p-2.5 rounded-lg transition-colors flex-shrink-0 text-gray-500 hover:bg-gray-100 hover:text-gray-700 min-w-[40px] min-h-[40px] flex items-center justify-center lg:hidden"
-                          title="Close chat"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                          </svg>
-                        </button>
-
-                        {/* Delete Button - Mobile: icon only, lg+: shows on hover */}
-                        <button
-                          onClick={() => handleDeleteConversation(conv._id)}
-                          disabled={deletingConversationId === conv._id}
-                          className={`p-2.5 rounded-lg transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center ${
-                            deletingConversationId === conv._id
-                              ? 'text-gray-400 cursor-not-allowed'
-                              : 'text-red-600 hover:bg-red-50'
-                          }`}
-                          title="Delete conversation"
-                        >
-                          {deletingConversationId === conv._id ? (
-                            <svg className="w-5 h-5 animate-spin" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-                            </svg>
-                          ) : (
-                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                            </svg>
-                          )}
-                        </button>
                       </div>
                     );
                   }
                 })}
               </div>
 
-              {/* Messages - Mobile: optimized spacing */}
-              <div className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-6 space-y-2.5 sm:space-y-3 lg:space-y-4 bg-gray-50" style={{ scrollBehavior: 'smooth' }}>
+              {/* Messages */}
+              <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
                 {messages.length === 0 ? (
-                  <div className="text-center text-gray-500 py-12 text-sm sm:text-base">No messages yet. Start the conversation!</div>
+                  <div className="text-center text-gray-500 py-12 text-sm">No messages yet</div>
                 ) : (
                   messages.map(message => {
-                    if (!message || !message.sender) {
-                      console.warn('Invalid message structure:', message);
-                      return null;
-                    }
-                    // Sender may have _id (from server) or id (from the auth user object)
-                    const senderId = typeof message.sender === 'string'
-                      ? message.sender
-                      : (message.sender?._id || message.sender?.id);
-                    const userId = user?.id;
-                    if (!senderId || !userId) {
-                      console.warn('Missing sender or user ID');
-                      return null;
-                    }
-                    const isCurrentUser = String(senderId) === String(userId);
-
-                    // Sender messages hold plaintext (optimistic) or decrypted text;
-                    // receiver messages hold decrypted text. Undecryptable = old/rotated keys.
+                    if (!message || !message.sender) return null;
+                    const senderId = message.sender?._id || message.sender?.id;
+                    const isCurrentUser = String(senderId) === String(user?.id);
                     const displayContent = message.undecryptable ? null : message.content;
-
-                    // Tick status for own messages: read (blue ✓✓) > delivered (✓✓) > sent (✓)
-                    // readBy/deliveredTo entries may be populated user objects or raw ids
-                    const isRead = isCurrentUser && (message.readBy || []).some(
-                      r => String(r.user?._id || r.user) !== String(userId)
-                    );
-                    const isDelivered = isCurrentUser && (message.deliveredTo || []).some(
-                      d => String(d?._id || d) !== String(userId)
-                    );
+                    const isRead = isCurrentUser && (message.readBy || []).some(r => String(r.user?._id || r.user) !== String(user.id));
+                    const isDelivered = isCurrentUser && (message.deliveredTo || []).some(d => String(d?._id || d) !== String(user.id));
 
                     return (
-                      <div
-                        key={message._id}
-                        className={`flex items-end gap-1.5 sm:gap-2 ${
-                          isCurrentUser ? 'justify-end' : 'justify-start'
-                        }`}
-                      >
+                      <div key={message._id} className={`flex items-end gap-1 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
                         {!isCurrentUser && (
-                          <div className="flex flex-col items-center flex-shrink-0">
-                            <div className="w-7 sm:w-8 h-7 sm:h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-[10px] sm:text-xs font-bold">
-                              {message.sender?.name ? message.sender.name.charAt(0).toUpperCase() : 'U'}
-                            </div>
+                          <div className="w-6 h-6 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            {message.sender?.name?.charAt(0).toUpperCase() || 'U'}
                           </div>
                         )}
-                        <div
-                          className={`max-w-[85%] sm:max-w-sm lg:max-w-md px-3 sm:px-4 py-2 sm:py-3 rounded-2xl shadow-sm text-sm sm:text-base leading-relaxed ${
-                            isCurrentUser
-                              ? 'bg-blue-600 text-white rounded-br-none'
-                              : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
-                          }`}
-                        >
+                        <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm ${isCurrentUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'}`}>
                           {!isCurrentUser && (
-                            <p className="text-[10px] sm:text-xs font-semibold text-gray-500 mb-0.5 sm:mb-1">
-                              {displayName(message.sender)}
-                            </p>
+                            <p className="text-xs font-semibold text-gray-500 mb-0.5">{displayName(message.sender)}</p>
                           )}
-                          {message.fileUrl && (
-                            <MediaMessage message={message} isCurrentUser={isCurrentUser} />
-                          )}
-                          {!message.fileUrl && displayContent && (
-                            <p className="text-xs sm:text-sm break-words">{displayContent}</p>
-                          )}
-                          {!message.fileUrl && message.undecryptable && (
-                            <p className="text-xs sm:text-sm italic opacity-60">🔒 Encrypted message</p>
-                          )}
-                          {message.fileUrl && message.content && message.content.startsWith('[Media:') && (
-                            null
-                          )}
-                          <p
-                            className={`text-[10px] sm:text-xs mt-1 sm:mt-2 flex items-center gap-0.5 sm:gap-1 ${
-                              isCurrentUser
-                                ? 'text-blue-100 justify-end'
-                                : 'text-gray-400'
-                            }`}
-                          >
-                            {new Date(message.createdAt).toLocaleTimeString([], {
-                              hour: '2-digit',
-                              minute: '2-digit'
-                            })}
+                          {message.fileUrl && <MediaMessage message={message} isCurrentUser={isCurrentUser} />}
+                          {!message.fileUrl && displayContent && <p className="text-sm break-words">{displayContent}</p>}
+                          {message.undecryptable && <p className="text-sm italic opacity-60">🔒 Encrypted</p>}
+                          <p className={`text-xs mt-1 flex items-center gap-0.5 ${isCurrentUser ? 'text-blue-100 justify-end' : 'text-gray-400'}`}>
+                            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                             {isCurrentUser && (
-                              <span
-                                className={`font-bold tracking-tighter ${
-                                  message.isOptimistic
-                                    ? 'text-blue-300'
-                                    : isRead
-                                      ? 'text-cyan-300'
-                                      : 'text-blue-100'
-                                }`}
-                                title={
-                                  message.isOptimistic
-                                    ? 'Sending...'
-                                    : isRead ? 'Read' : isDelivered ? 'Delivered' : 'Sent'
-                                }
-                              >
+                              <span className={`font-bold ${message.isOptimistic ? 'text-blue-300' : isRead ? 'text-cyan-300' : 'text-blue-100'}`}>
                                 {message.isOptimistic ? '🕓' : (isRead || isDelivered) ? '✓✓' : '✓'}
                               </span>
                             )}
                           </p>
                         </div>
-                        {isCurrentUser && (
-                          <div className="flex flex-col items-center flex-shrink-0">
-                            <div className="w-7 sm:w-8 h-7 sm:h-8 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center text-white text-[10px] sm:text-xs font-bold">
-                              {user?.name ? user.name.charAt(0).toUpperCase() : '?'}
-                            </div>
-                          </div>
-                        )}
                       </div>
                     );
                   })
                 )}
                 {typingUsers.length > 0 && (
-                  <div className="flex items-center gap-1.5 sm:gap-2 px-2 sm:px-4 py-1.5 sm:py-2 text-gray-500 text-xs sm:text-sm">
+                  <div className="flex items-center gap-1 px-3 py-1 text-gray-500 text-xs">
                     <span className="flex gap-1">
-                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce"></span>
-                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-                      <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"></span>
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
                     </span>
                     Someone is typing...
                   </div>
@@ -1205,10 +897,10 @@ export const Chat = () => {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Area - Mobile optimized */}
-              <form onSubmit={handleSendMessage} className="p-3 sm:p-4 lg:p-4 border-t border-gray-100 bg-white flex-shrink-0">
+              {/* Input Area */}
+              <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-100 bg-white flex-shrink-0">
                 {error && (
-                  <div className="mb-2 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs sm:text-sm rounded-lg flex items-center gap-2">
+                  <div className="mb-2 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-2">
                     <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
                     </svg>
@@ -1216,144 +908,254 @@ export const Chat = () => {
                   </div>
                 )}
                 <div className="flex gap-2 items-end">
-                  {/* Media Upload Button - Touch target */}
                   <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
-                    <MediaUploader
-                      ref={fileInputRef}
-                      onUploadSuccess={handleMediaUploadSuccess}
-                      conversationId={selectedConversation}
-                    />
+                    <MediaUploader ref={fileInputRef} onUploadSuccess={handleMediaUploadSuccess} conversationId={selectedConversation} />
                   </div>
-
-                  {/* Message Input */}
-                  <input
-                    type="text"
-                    value={messageInput}
-                    onChange={handleMessageInputChange}
-                    placeholder="Type a message..."
-                    className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm sm:text-base min-h-[40px]"
-                  />
-
-                  {/* Send Button */}
-                  <button
-                    type="submit"
-                    disabled={!messageInput.trim()}
-                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed text-sm min-w-[40px] min-h-[40px] flex items-center justify-center"
-                  >
+                  <input type="text" value={messageInput} onChange={handleMessageInputChange} placeholder="Type..." className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm min-h-[40px]" />
+                  <button type="submit" disabled={!messageInput.trim()} className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 text-sm min-w-[40px] min-h-[40px] flex items-center justify-center">
                     Send
                   </button>
                 </div>
               </form>
             </>
           ) : (
-            <div className="hidden lg:flex flex-1 items-center justify-center text-gray-500">
-              Select a conversation to start chatting
+            /* Tab Content */
+            <>
+              {/* Chats Tab */}
+              {activeTab === 'chats' && (
+                <div className="flex-1 overflow-y-auto">
+                  <div className="p-3 space-y-2">
+                    <input type="text" placeholder="Search..." value={searchQuery} onChange={handleSearch} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                  </div>
+                  {searchResults.length > 0 ? (
+                    searchResults.map(searchUser => (
+                      <button key={searchUser._id} onClick={() => startConversation(searchUser._id)} className="w-full p-4 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors">
+                        <p className="font-semibold text-gray-900 text-sm">{searchUser.name}</p>
+                        <p className="text-xs text-gray-500">{searchUser.email}</p>
+                      </button>
+                    ))
+                  ) : conversations.length === 0 ? (
+                    <div className="p-6 text-center text-gray-500 text-sm">No conversations yet</div>
+                  ) : (
+                    conversations.map(conversation => {
+                      const hasUnread = (conversation.unreadCount || 0) > 0;
+                      return (
+                        <button key={conversation._id} onClick={() => loadMessages(conversation._id)} className={`w-full p-4 text-left border-b border-gray-100 transition-colors min-h-[70px] flex flex-col justify-center ${hasUnread ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-50'}`}>
+                          <div className="flex items-center justify-between gap-2">
+                            <p className={`truncate flex items-center gap-1.5 flex-1 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'} text-sm`}>
+                              {getConversationName(conversation)}
+                              {isUnknownSender(conversation) && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">Unknown</span>}
+                            </p>
+                            {hasUnread && <span className="flex-shrink-0 min-w-[24px] h-6 px-1.5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</span>}
+                          </div>
+                          <p className={`text-xs truncate mt-1 ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'}`}>
+                            {conversation.lastMessage?.undecryptable ? '🔒 Encrypted' : conversation.lastMessage?.content || 'No messages yet'}
+                          </p>
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              )}
+
+              {/* Contacts Tab */}
+              {activeTab === 'contacts' && (
+                <div className="flex-1 overflow-y-auto flex flex-col">
+                  <div className="p-3 space-y-2 border-b border-gray-100">
+                    <form onSubmit={handleAddContact} className="flex gap-2">
+                      <input type="email" placeholder="Add contact..." value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" />
+                      <button type="submit" disabled={addingContact || !contactEmail.trim()} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors min-h-[40px]">
+                        +
+                      </button>
+                    </form>
+                    {contactMessage && <p className={`text-xs ${contactMessage.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>{contactMessage}</p>}
+                  </div>
+                  <div className="flex-1 overflow-y-auto">
+                    {loadingContacts ? (
+                      <div className="p-6 text-center text-gray-500 text-sm">Loading...</div>
+                    ) : contacts.length === 0 ? (
+                      <div className="p-6 text-center text-gray-500 text-sm">No contacts yet</div>
+                    ) : (
+                      contacts.map(contact => (
+                        <div key={contact._id} className="flex items-center gap-3 p-4 border-b border-gray-50 hover:bg-gray-50">
+                          <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
+                            {contact.name?.charAt(0).toUpperCase() || '?'}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-gray-900 text-sm truncate">{contact.nickname || contact.name}</p>
+                            <p className="text-xs text-gray-500 truncate">{contact.email}</p>
+                          </div>
+                          <button onClick={() => startConversation(contact._id)} className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors flex-shrink-0">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+                            </svg>
+                          </button>
+                          <button onClick={() => handleRemoveContact(contact._id)} className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors flex-shrink-0">
+                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                            </svg>
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Profile Tab */}
+              {activeTab === 'profile' && (
+                <div className="flex-1 overflow-y-auto flex flex-col">
+                  <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white text-center flex-shrink-0">
+                    <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold mx-auto mb-3">
+                      {user?.name?.charAt(0).toUpperCase() || 'U'}
+                    </div>
+                    <p className="font-bold text-lg">{user?.name}</p>
+                    <p className="text-sm text-blue-100 mb-2">{user?.email}</p>
+                    <p className="text-sm text-green-300 flex items-center justify-center gap-1">
+                      <span className="w-2 h-2 bg-green-400 rounded-full"></span> Online
+                    </p>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        {/* Desktop Chat Area */}
+        <div className="hidden lg:flex lg:flex-1 bg-white lg:rounded-2xl shadow-lg shadow-sm border border-gray-100 flex-col min-h-0 overflow-hidden" onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+          {isDragging && (
+            <div className="absolute inset-0 bg-blue-500 bg-opacity-10 border-2 border-dashed border-blue-500 rounded-2xl flex items-center justify-center z-40 pointer-events-none">
+              <svg className="w-16 h-16 text-blue-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
+              </svg>
             </div>
+          )}
+          {selectedConversation ? (
+            <>
+              <div className="p-4 border-b border-gray-100 bg-white flex-shrink-0">
+                {conversations.find(c => c._id === selectedConversation) && (
+                  <div>
+                    <h2 className="text-xl font-bold text-gray-900">{getConversationName(conversations.find(c => c._id === selectedConversation))}</h2>
+                    <p className="text-sm text-gray-500">
+                      {conversations.find(c => c._id === selectedConversation)?.type === 'group' ? `${conversations.find(c => c._id === selectedConversation)?.participants.length} members` : 'Direct message'}
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+                {messages.length === 0 ? (
+                  <div className="text-center text-gray-500 py-12">No messages yet</div>
+                ) : (
+                  messages.map(message => {
+                    if (!message || !message.sender) return null;
+                    const senderId = message.sender?._id || message.sender?.id;
+                    const isCurrentUser = String(senderId) === String(user?.id);
+                    const displayContent = message.undecryptable ? null : message.content;
+                    const isRead = isCurrentUser && (message.readBy || []).some(r => String(r.user?._id || r.user) !== String(user.id));
+                    const isDelivered = isCurrentUser && (message.deliveredTo || []).some(d => String(d?._id || d) !== String(user.id));
+
+                    return (
+                      <div key={message._id} className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+                        {!isCurrentUser && (
+                          <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+                            {message.sender?.name?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                        )}
+                        <div className={`max-w-sm px-4 py-3 rounded-2xl ${isCurrentUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'}`}>
+                          {!isCurrentUser && <p className="text-xs font-semibold text-gray-500 mb-1">{displayName(message.sender)}</p>}
+                          {message.fileUrl && <MediaMessage message={message} isCurrentUser={isCurrentUser} />}
+                          {!message.fileUrl && displayContent && <p className="break-words">{displayContent}</p>}
+                          {message.undecryptable && <p className="italic opacity-60">🔒 Encrypted message</p>}
+                          <p className={`text-xs mt-2 flex items-center gap-0.5 ${isCurrentUser ? 'text-blue-100 justify-end' : 'text-gray-400'}`}>
+                            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                            {isCurrentUser && (
+                              <span className={`font-bold ${message.isOptimistic ? 'text-blue-300' : isRead ? 'text-cyan-300' : 'text-blue-100'}`}>
+                                {message.isOptimistic ? '🕓' : (isRead || isDelivered) ? '✓✓' : '✓'}
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                  })
+                )}
+                {typingUsers.length > 0 && (
+                  <div className="flex items-center gap-1 px-4 py-2 text-gray-500 text-sm">
+                    <span className="flex gap-1">
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
+                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
+                    </span>
+                    Someone is typing...
+                  </div>
+                )}
+                <div ref={messagesEndRef} />
+              </div>
+
+              <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 bg-white flex-shrink-0">
+                {error && (
+                  <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center gap-2">
+                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                    {error}
+                  </div>
+                )}
+                <div className="flex gap-3">
+                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
+                    <MediaUploader ref={fileInputRef} onUploadSuccess={handleMediaUploadSuccess} conversationId={selectedConversation} />
+                  </div>
+                  <input type="text" value={messageInput} onChange={handleMessageInputChange} placeholder="Type a message..." className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                  <button type="submit" disabled={!messageInput.trim()} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 min-h-[40px] flex items-center justify-center">
+                    Send
+                  </button>
+                </div>
+              </form>
+            </>
+          ) : (
+            <div className="flex-1 flex items-center justify-center text-gray-500">Select a conversation to start chatting</div>
           )}
         </div>
       </div>
 
-      {/* Profile & Contacts Modal */}
-      {showProfile && (
-        <div
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setShowProfile(false)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[80vh] flex flex-col overflow-hidden"
-            onClick={(e) => e.stopPropagation()}
+      {/* Mobile Bottom Tabs - Hidden on desktop */}
+      {!selectedConversation && (
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around flex-shrink-0">
+          <button
+            onClick={() => setActiveTab('chats')}
+            className={`flex-1 py-3 px-4 flex flex-col items-center gap-1 transition-colors ${activeTab === 'chats' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
           >
-            {/* Modal header: user info */}
-            <div className="p-6 bg-gradient-to-r from-blue-600 to-indigo-600 text-white">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-lg font-bold">My Profile</h2>
-                <button
-                  onClick={() => setShowProfile(false)}
-                  className="p-1 rounded-lg hover:bg-white/20 transition-colors"
-                  title="Close"
-                >
-                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-              <div className="flex items-center gap-4">
-                <div className="w-16 h-16 bg-white/20 rounded-full flex items-center justify-center text-2xl font-bold">
-                  {user?.name?.charAt(0).toUpperCase() || 'U'}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-bold text-lg truncate">{user?.name}</p>
-                  <p className="text-sm text-blue-100 truncate">{user?.email}</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Contacts list */}
-            <div className="p-4 border-b border-gray-100">
-              <h3 className="font-semibold text-gray-900 text-sm">
-                Contacts {!loadingContacts && `(${contacts.length})`}
-              </h3>
-            </div>
-            <div className="flex-1 overflow-y-auto">
-              {loadingContacts ? (
-                <div className="p-6 text-center text-gray-500 text-sm">Loading contacts...</div>
-              ) : contacts.length === 0 ? (
-                <div className="p-6 text-center text-gray-500 text-sm">
-                  No contacts yet. Add one by email from the sidebar.
-                </div>
-              ) : (
-                contacts.map(contact => (
-                  <div
-                    key={contact._id}
-                    className="flex items-center gap-3 p-4 border-b border-gray-50 hover:bg-gray-50"
-                  >
-                    <div className="w-10 h-10 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">
-                      {contact.name?.charAt(0).toUpperCase() || '?'}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-semibold text-gray-900 text-sm truncate">
-                        {contact.nickname || contact.name}
-                        {contact.nickname && (
-                          <span className="ml-1.5 text-xs font-normal text-gray-400">({contact.name})</span>
-                        )}
-                      </p>
-                      <p className="text-xs text-gray-500 truncate">{contact.email}</p>
-                    </div>
-                    <button
-                      onClick={() => handleSetNickname(contact)}
-                      className="p-2 rounded-lg text-gray-500 hover:bg-gray-100 transition-colors"
-                      title="Set nickname"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => {
-                        setShowProfile(false);
-                        startConversation(contact._id);
-                      }}
-                      className="p-2 rounded-lg text-blue-600 hover:bg-blue-50 transition-colors"
-                      title="Message"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
-                      </svg>
-                    </button>
-                    <button
-                      onClick={() => handleRemoveContact(contact._id)}
-                      className="p-2 rounded-lg text-red-500 hover:bg-red-50 transition-colors"
-                      title="Remove contact"
-                    >
-                      <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                      </svg>
-                    </button>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
+            <svg className="w-6 h-6" fill={activeTab === 'chats' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
+            <span className="text-xs font-medium">Chats</span>
+          </button>
+          <button
+            onClick={() => {
+              setActiveTab('contacts');
+              setLoadingContacts(true);
+              chatAPI.getContacts()
+                .then(res => setContacts(res.data.contacts || []))
+                .catch(() => setContacts([]))
+                .finally(() => setLoadingContacts(false));
+            }}
+            className={`flex-1 py-3 px-4 flex flex-col items-center gap-1 transition-colors ${activeTab === 'contacts' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <svg className="w-6 h-6" fill={activeTab === 'contacts' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4.354a4 4 0 110 5.292M15 21H3v-2a6 6 0 0112 0v2zm0 0h6v-2a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z" />
+            </svg>
+            <span className="text-xs font-medium">Contacts</span>
+          </button>
+          <button
+            onClick={handleOpenProfile}
+            className={`flex-1 py-3 px-4 flex flex-col items-center gap-1 transition-colors ${activeTab === 'profile' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
+          >
+            <svg className="w-6 h-6" fill={activeTab === 'profile' ? 'currentColor' : 'none'} stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+            </svg>
+            <span className="text-xs font-medium">Profile</span>
+          </button>
         </div>
       )}
     </div>
