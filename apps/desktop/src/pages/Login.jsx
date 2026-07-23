@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { MessageCircle, AlertCircle, Loader2 } from 'lucide-react';
-import api from '../services/api';
-import { generateKeypair, storeKeys, getKeys } from '../services/cryptoService';
+import { apiClient, cryptoService } from '../services';
 import { useAuth } from '../hooks/useAuth';
 
 export const Login = () => {
@@ -24,7 +22,7 @@ export const Login = () => {
     setLoading(true);
 
     try {
-      await api.post('/auth/send-otp-login', { email: formData.email });
+      await apiClient.post('/auth/send-otp-login', { email: formData.email });
       setStep(2);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to send OTP');
@@ -39,7 +37,7 @@ export const Login = () => {
     setLoading(true);
 
     try {
-      const response = await api.post('/auth/verify-otp-login', {
+      const response = await apiClient.post('/auth/verify-otp-login', {
         email: formData.email,
         otp: formData.otp
       });
@@ -51,17 +49,18 @@ export const Login = () => {
       // decrypt on any device/session. Only generate if the server has none.
       const serverUser = response.data.user;
       if (serverUser.publicKey && serverUser.secretKey) {
-        storeKeys(serverUser.publicKey, serverUser.secretKey);
+        await cryptoService.storeKeys(serverUser.publicKey, serverUser.secretKey);
       } else {
-        let keys = getKeys();
-        if (!keys.secretKey || !keys.publicKey) {
-          keys = generateKeypair();
-          storeKeys(keys.publicKey, keys.secretKey);
+        const keys = await cryptoService.getKeys();
+        if (!keys || !keys.secretKey || !keys.publicKey) {
+          const newKeys = cryptoService.generateKeypair();
+          await cryptoService.storeKeys(newKeys.publicKey, newKeys.secretKey);
         }
         try {
-          await api.post('/auth/update-public-key', {
-            publicKey: keys.publicKey,
-            secretKey: keys.secretKey
+          const keysToSync = await cryptoService.getKeys();
+          await apiClient.post('/auth/update-public-key', {
+            publicKey: keysToSync.publicKey,
+            secretKey: keysToSync.secretKey
           });
         } catch (updateErr) {
           console.warn('Failed to sync keys to server:', updateErr.message);
@@ -77,25 +76,29 @@ export const Login = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-600 to-blue-800 flex items-center justify-center px-4">
       <div className="w-full max-w-md">
         {/* Logo/Title */}
         <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-accent to-accent-hover rounded-2xl mb-4">
-            <MessageCircle className="w-8 h-8 text-white" strokeWidth={2} />
+          <div className="inline-flex items-center justify-center w-16 h-16 bg-white rounded-full mb-4">
+            <svg className="w-8 h-8 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
+            </svg>
           </div>
-          <h1 className="text-4xl font-bold text-text-primary mb-2">Nexus</h1>
-          <p className="text-text-muted">Connect with anyone, anytime</p>
+          <h1 className="text-4xl font-bold text-white mb-2">Nexus</h1>
+          <p className="text-blue-100">Connect with anyone, anytime</p>
         </div>
 
         {/* Card */}
         <div className="auth-card">
-          <h2 className="text-2xl font-bold text-text-primary mb-6 text-center">Welcome Back</h2>
+          <h2 className="text-2xl font-bold text-gray-900 mb-6 text-center">Welcome Back</h2>
 
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
-              <span className="text-sm">{error}</span>
+            <div className="mb-6 p-4 bg-red-50 border border-red-200 text-red-700 rounded-lg flex items-start gap-3">
+              <svg className="w-5 h-5 mt-0.5 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
+                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+              </svg>
+              <span>{error}</span>
             </div>
           )}
 
@@ -103,7 +106,7 @@ export const Login = () => {
           {step === 1 && (
             <form onSubmit={handleSendOTP} className="space-y-4">
               <div>
-                <label className="block text-sm font-semibold text-text-secondary mb-2">Email Address</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Email Address</label>
                 <input
                   type="email"
                   name="email"
@@ -122,7 +125,10 @@ export const Login = () => {
               >
                 {loading ? (
                   <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
                     Sending OTP...
                   </span>
                 ) : (
@@ -135,13 +141,13 @@ export const Login = () => {
           {/* Step 2: OTP Verification */}
           {step === 2 && (
             <form onSubmit={handleVerifyOTPAndLogin} className="space-y-4">
-              <div className="p-4 bg-accent/10 border border-accent/20 rounded-lg mb-4">
-                <p className="text-sm text-text-primary">Verification code sent to <strong>{formData.email}</strong></p>
-                <p className="text-xs text-text-muted mt-2">Check your inbox for the 6-digit code</p>
+              <div className="p-4 bg-blue-50 rounded-lg mb-4">
+                <p className="text-sm text-blue-900">Verification code sent to <strong>{formData.email}</strong></p>
+                <p className="text-xs text-blue-700 mt-2">Check your inbox for the 6-digit code</p>
               </div>
 
               <div>
-                <label className="block text-sm font-semibold text-text-secondary mb-2">Verification Code</label>
+                <label className="block text-sm font-semibold text-gray-700 mb-2">Verification Code</label>
                 <input
                   type="text"
                   name="otp"
@@ -152,7 +158,7 @@ export const Login = () => {
                   maxLength="6"
                   required
                 />
-                <p className="text-xs text-text-muted mt-1">6-digit code from email</p>
+                <p className="text-xs text-gray-500 mt-1">6-digit code from email</p>
               </div>
 
               <div className="flex gap-3">
@@ -162,7 +168,7 @@ export const Login = () => {
                     setStep(1);
                     setError('');
                   }}
-                  className="flex-1 py-3 px-4 border-2 border-border text-text-secondary font-semibold rounded-lg hover:bg-background transition-colors"
+                  className="flex-1 py-3 px-4 border-2 border-gray-300 text-gray-700 font-semibold rounded-lg hover:bg-gray-50 transition-colors"
                 >
                   Back
                 </button>
@@ -173,7 +179,10 @@ export const Login = () => {
                 >
                   {loading ? (
                     <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-5 h-5 animate-spin" />
+                      <svg className="animate-spin h-5 w-5" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
                       Signing in...
                     </span>
                   ) : (
@@ -186,20 +195,20 @@ export const Login = () => {
 
           <div className="mt-6 relative">
             <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border"></div>
+              <div className="w-full border-t border-gray-200"></div>
             </div>
             <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-card text-text-muted">Don't have an account?</span>
+              <span className="px-2 bg-white text-gray-500">Don't have an account?</span>
             </div>
           </div>
 
-          <Link to="/signup" className="block mt-6 w-full text-center px-4 py-3 border-2 border-accent text-accent font-semibold rounded-lg hover:bg-accent/10 transition-colors">
+          <Link to="/signup" className="block mt-6 w-full text-center px-4 py-3 border-2 border-blue-600 text-blue-600 font-semibold rounded-lg hover:bg-blue-50 transition-colors">
             Create Account
           </Link>
         </div>
 
         {/* Footer */}
-        <p className="text-center text-text-muted text-sm mt-8">
+        <p className="text-center text-blue-100 text-sm mt-8">
           Secure messaging for everyone
         </p>
       </div>

@@ -1,9 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import chatAPI from '../services/chatService';
-import { useConversations } from '../hooks/useConversations';
-import { useMessages } from '../hooks/useMessages';
-import { useChatSocket } from '../hooks/useChatSocket';
+import { chatService, cryptoService, socketWrapper } from '../services';
 import { InstallPrompt } from '../components/InstallPrompt';
 import { MessageBubble } from '../components/MessageBubble';
 import { TypingIndicator } from '../components/TypingIndicator';
@@ -16,60 +13,181 @@ import { EmptyState } from '../components/EmptyState';
 export const Chat = () => {
   const { user, logout } = useAuth();
   const [conversations, setConversations] = useState([]);
+  const [selectedConversation, setSelectedConversation] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [messageInput, setMessageInput] = useState('');
+  const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [error, setError] = useState('');
+  const [contextMenu, setContextMenu] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [contactEmail, setContactEmail] = useState('');
+  const [addingContact, setAddingContact] = useState(false);
+  const [contactMessage, setContactMessage] = useState('');
+  const [contacts, setContacts] = useState([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
+  const [contactIds, setContactIds] = useState(new Set());
+  const [contactNicknames, setContactNicknames] = useState({});
   const [typingUsers, setTypingUsers] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
   const [activeTab, setActiveTab] = useState('chats'); // Mobile tabs: 'chats', 'contacts', 'profile'
+  const messagesEndRef = useRef(null);
+  const typingTimeoutRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const selectedConversationRef = useRef(null);
+  const activeConversationRef = useRef(null);
 
-  const {
-    loading,
-    searchQuery,
-    searchResults,
-    contactEmail, setContactEmail,
-    addingContact,
-    contactMessage,
-    contacts, setContacts,
-    loadingContacts, setLoadingContacts,
-    loadConversations,
-    handleSearch,
-    startConversation: startConversationBase,
-    displayName,
-    isUnknownSender,
-    handleAddContact: handleAddContactBase,
-    handleOpenProfile,
-    handleRemoveContact,
-    getConversationName,
-  } = useConversations({ user, setConversations, setError, setActiveTab });
+  useEffect(() => {
+    loadConversations();
+    chatService.getContacts()
+      .then(contacts => {
+        setContactIds(new Set(contacts.map(c => String(c._id))));
+        const nicknames = {};
+        contacts.forEach(c => { if (c.nickname) nicknames[String(c._id)] = c.nickname; });
+        setContactNicknames(nicknames);
+      })
+      .catch(() => {});
+  }, []);
 
-  const {
-    messages, setMessages,
-    messageInput,
-    loadingMessages,
-    selectedConversation,
-    selectedConversationRef,
-    activeConversationRef,
-    messagesEndRef,
-    fileInputRef,
-    contextMenu, setContextMenu,
-    isDragging,
-    loadMessages,
-    handleSendMessage,
-    handleMessageInputChange,
-    handleMediaUploadSuccess,
-    handleDragEnter, handleDragLeave, handleDragOver, handleDrop,
-    handleCloseChat,
-    handleDeleteMessage,
-    handleMessageLongPress,
-  } = useMessages({ user, conversations, setConversations, setTypingUsers, setError, setActiveTab });
+  useEffect(() => {
+    const handleUserOnline = ({ userId }) => {
+      setConversations(prev => prev.map(conv => ({
+        ...conv,
+        participants: conv.participants.map(p =>
+          String(p._id) === String(userId) ? { ...p, isOnline: true } : p
+        )
+      })));
+    };
 
-  useChatSocket({
-    user,
-    setConversations,
-    setMessages,
-    setTypingUsers,
-    selectedConversationRef,
-    activeConversationRef,
-    loadConversations,
-  });
+    const handleUserOffline = ({ userId }) => {
+      setConversations(prev => prev.map(conv => ({
+        ...conv,
+        participants: conv.participants.map(p =>
+          String(p._id) === String(userId) ? { ...p, isOnline: false } : p
+        )
+      })));
+    };
+
+    socketWrapper.onUserOnline(handleUserOnline);
+    socketWrapper.onUserOffline(handleUserOffline);
+
+    return () => {
+      socketWrapper.offUserOnline();
+      socketWrapper.offUserOffline();
+    };
+  }, []);
+
+  useEffect(() => {
+    socketWrapper.initialize();
+
+    socketWrapper.onMessageReceive((message) => {
+      const currentConvId = selectedConversationRef.current;
+      const conversation = activeConversationRef.current;
+
+      if (!currentConvId || String(message.conversation) !== String(currentConvId)) {
+        return;
+      }
+
+      if (message.sender && typeof message.sender === 'object' && !message.sender._id && message.sender.id) {
+        message.sender._id = message.sender.id;
+      }
+
+      const isMessageFromCurrentUser = String(message.sender?._id || message.sender?.id) === String(user.id);
+      const decryptedMsg = decryptMessageIfNeeded(message, conversation);
+
+      setMessages(prev => {
+        if (isMessageFromCurrentUser) {
+          const optimisticMsg = prev.find(m => m.isOptimistic);
+          if (optimisticMsg) {
+            return prev.map(m =>
+              m.isOptimistic
+                ? {
+                    ...m,
+                    _id: message._id,
+                    sender: message.sender,
+                    deliveredTo: message.deliveredTo || [],
+                    readBy: message.readBy || [],
+                    isOptimistic: false
+                  }
+                : m
+            );
+          }
+          return [...prev, decryptedMsg];
+        }
+        return [...prev, decryptedMsg];
+      });
+
+      let previewContent = decryptedMsg.undecryptable ? '🔒 Encrypted message' : decryptedMsg.content;
+      if (message.fileUrl && message.fileName) {
+        previewContent = message.fileName;
+      }
+      setConversations(prev => prev.map(conv =>
+        conv._id === currentConvId
+          ? { ...conv, lastMessage: { ...message, content: previewContent }, lastMessageAt: new Date() }
+          : conv
+      ));
+    });
+
+    socketWrapper.onTypingStart(({ userId }) => {
+      if (String(userId) !== String(user.id)) {
+        setTypingUsers(prev => [...new Set([...prev, userId])]);
+      }
+    });
+
+    socketWrapper.onTypingStop(({ userId }) => {
+      setTypingUsers(prev => prev.filter(id => id !== userId));
+    });
+
+    socketWrapper.onConversationNotify((message) => {
+      const openId = selectedConversationRef.current;
+      if (String(message.conversation) === String(openId)) {
+        chatService.markConversationRead(openId).catch(() => {});
+        return;
+      }
+      setConversations(prev => {
+        const exists = prev.some(conv => String(conv._id) === String(message.conversation));
+        if (!exists) {
+          setTimeout(() => loadConversations(), 0);
+          return prev;
+        }
+        return prev.map(conv => {
+          if (String(conv._id) !== String(message.conversation)) return conv;
+          const dec = decryptMessageIfNeeded(message, conv);
+          let preview = dec.undecryptable ? '🔒 Encrypted message' : dec.content;
+          if (message.fileUrl && message.fileName) preview = message.fileName;
+          return {
+            ...conv,
+            unreadCount: (conv.unreadCount || 0) + 1,
+            lastMessage: { ...message, content: preview },
+            lastMessageAt: new Date()
+          };
+        });
+      });
+    });
+
+    socketWrapper.onMessagesRead(({ conversationId, readerId }) => {
+      if (String(conversationId) !== String(selectedConversationRef.current)) return;
+      setMessages(prev => prev.map(m => {
+        const senderId = m.sender?._id || m.sender?.id || m.sender;
+        if (String(senderId) !== String(user.id)) return m;
+        const alreadyRead = (m.readBy || []).some(r => String(r.user?._id || r.user) === String(readerId));
+        return alreadyRead ? m : { ...m, readBy: [...(m.readBy || []), { user: readerId, readAt: new Date() }] };
+      }));
+    });
+
+    return () => {
+      socketWrapper.offMessageReceive();
+      socketWrapper.offConversationNotify();
+      socketWrapper.offMessagesRead();
+      socketWrapper.offTypingStart();
+      socketWrapper.offTypingStop();
+    };
+  }, []);
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
 
   useEffect(() => {
     if (error) {
@@ -78,20 +196,470 @@ export const Chat = () => {
     }
   }, [error]);
 
-  // Composed wrappers: starting a conversation (from search results or contacts)
-  // must both create/find the conversation AND load its messages. These two
-  // steps live in different hooks, so Chat.jsx composes them here.
-  const startConversation = async (userId) => {
-    const conversationId = await startConversationBase(userId);
-    if (conversationId) {
-      loadMessages(conversationId);
+  const looksEncrypted = (content) =>
+    typeof content === 'string' && content.length >= 50 && /^[A-Za-z0-9+/]+=*$/.test(content);
+
+  // Decryption requires async but this function is sync in many places
+  // For now, keep the sync wrapper for compatibility
+  const decryptMessageIfNeeded = (message, conversation, keysCache = null) => {
+    try {
+      if (!conversation || conversation.type !== 'private' || conversation.participants?.length !== 2) {
+        return message;
+      }
+      if (!message?.content || message.fileUrl) {
+        return message;
+      }
+
+      // Note: This assumes keys are already cached/available synchronously
+      // In a real production app, you'd refactor to async/await throughout
+      // For now this maintains compatibility with existing code
+      const otherParticipant = conversation.participants.find(
+        p => String(p._id) !== String(user?.id)
+      );
+
+      if (!keysCache?.secretKey || !otherParticipant?.publicKey) {
+        return message;
+      }
+
+      try {
+        const decrypted = cryptoService.decryptMessage(message.content, otherParticipant.publicKey, keysCache.secretKey);
+        return { ...message, content: decrypted, isDecrypted: true };
+      } catch (e) {
+        return { ...message, undecryptable: looksEncrypted(message.content) };
+      }
+    } catch (err) {
+      console.error('Decryption error:', err);
+      return message;
     }
   };
 
+  const loadConversations = async () => {
+    try {
+      setLoading(true);
+      setError('');
+      const conversations = await chatService.getConversations();
+      const onlineUsers = await chatService.getOnlineUsers();
+      const onlineUsersSet = new Set(onlineUsers);
+
+      const conversationsWithStatus = conversations.map(conv => {
+        const withStatus = {
+          ...conv,
+          participants: conv.participants.map(p => ({
+            ...p,
+            isOnline: onlineUsersSet.has(String(p._id))
+          }))
+        };
+        if (withStatus.lastMessage?.content) {
+          // TODO: Need to refactor crypto to be async
+          // For now, skip decryption in list view
+          // withStatus.lastMessage = decryptMessageIfNeeded(withStatus.lastMessage, withStatus);
+        }
+        return withStatus;
+      });
+
+      setConversations(conversationsWithStatus || []);
+      setLoading(false);
+    } catch (err) {
+      console.error('Error loading conversations:', err);
+      setError(err.response?.data?.message || 'Failed to load conversations');
+      setLoading(false);
+      setConversations([]);
+    }
+  };
+
+  const loadMessages = async (conversationId) => {
+    try {
+      if (selectedConversation) {
+        socketWrapper.leaveConversation(selectedConversation);
+      }
+
+      setLoadingMessages(true);
+      const messages = await chatService.getMessages(conversationId);
+      let conversation = conversations.find(c => c._id === conversationId);
+      if (!conversation) {
+        conversation = await chatService.getConversationDetails(conversationId);
+      }
+
+      selectedConversationRef.current = conversationId;
+      activeConversationRef.current = conversation;
+
+      // Get keys for decryption
+      const keys = await cryptoService.getKeys();
+      const decryptedMessages = messages.map(msg =>
+        decryptMessageIfNeeded(msg, conversation, keys)
+      );
+
+      setMessages(decryptedMessages);
+      setSelectedConversation(conversationId);
+      setTypingUsers([]);
+      setLoadingMessages(false);
+
+      socketWrapper.joinConversation(conversationId);
+
+      setConversations(prev => prev.map(c =>
+        c._id === conversationId ? { ...c, unreadCount: 0 } : c
+      ));
+      chatService.markConversationRead(conversationId).catch(() => {});
+    } catch (err) {
+      setError('Failed to load messages');
+      setLoadingMessages(false);
+      console.error(err);
+    }
+  };
+
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!messageInput.trim() || !selectedConversation) return;
+
+    const messageContent = messageInput;
+    setMessageInput('');
+    socketWrapper.stopTyping(selectedConversation);
+
+    try {
+      const socket = socketWrapper.getInstance();
+      if (!socket?.connected) {
+        setError('Connection lost. Please check your internet connection.');
+        setMessageInput(messageContent);
+        return;
+      }
+
+      const conversation = conversations.find(c => c._id === selectedConversation);
+      let contentToSend = messageContent;
+      let isEncrypted = false;
+
+      if (conversation && conversation.type === 'private' && conversation.participants.length === 2) {
+        try {
+          const keys = await cryptoService.getKeys();
+          if (keys?.publicKey && keys?.secretKey) {
+            const otherParticipant = conversation.participants.find(
+              p => String(p._id) !== String(user.id)
+            );
+
+            if (otherParticipant?.publicKey) {
+              contentToSend = cryptoService.encryptMessage(messageContent, otherParticipant.publicKey, keys.secretKey);
+              isEncrypted = true;
+            }
+          }
+        } catch (encryptErr) {
+          console.error('Encryption error:', encryptErr);
+          setError('Failed to encrypt message');
+          setMessageInput(messageContent);
+          return;
+        }
+      }
+
+      const optimisticMessage = {
+        _id: 'temp-' + Date.now(),
+        conversation: selectedConversation,
+        sender: { ...user, _id: user.id },
+        content: messageContent,
+        createdAt: new Date(),
+        isOptimistic: true,
+        isEncrypted
+      };
+      setMessages(prev => [...prev, optimisticMessage]);
+
+      try {
+        await socketWrapper.sendMessage(selectedConversation, contentToSend);
+      } catch (err) {
+        setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
+        setError(err.message || 'Failed to send message');
+        setMessageInput(messageContent);
+      }
+    } catch (err) {
+      setError(err.message || 'Failed to send message');
+      setMessageInput(messageContent);
+      console.error('Send message error:', err);
+    }
+  };
+
+  const handleSearch = async (e) => {
+    const query = e.target.value;
+    setSearchQuery(query);
+
+    if (query.length < 2) {
+      setSearchResults([]);
+      return;
+    }
+
+    try {
+      const users = await chatService.searchUsers(query);
+      setSearchResults(users);
+    } catch (err) {
+      console.error(err);
+    }
+  };
+
+  const handleMessageInputChange = (e) => {
+    setMessageInput(e.target.value);
+
+    if (selectedConversation) {
+      socketWrapper.startTyping(selectedConversation);
+
+      if (typingTimeoutRef.current) {
+        clearTimeout(typingTimeoutRef.current);
+      }
+
+      typingTimeoutRef.current = setTimeout(() => {
+        socketWrapper.stopTyping(selectedConversation);
+      }, 1000);
+    }
+  };
+
+  const handleMediaUploadSuccess = async (mediaData) => {
+    if (!selectedConversation) return;
+
+    const optimisticMessage = {
+      _id: 'temp-' + Date.now(),
+      conversation: selectedConversation,
+      sender: { ...user, _id: user.id },
+      content: mediaData.fileName,
+      fileUrl: mediaData.url,
+      fileName: mediaData.fileName,
+      fileSize: mediaData.fileSize,
+      type: mediaData.type,
+      createdAt: new Date(),
+      isOptimistic: true
+    };
+    setMessages(prev => [...prev, optimisticMessage]);
+
+    try {
+      await sendMessage(selectedConversation, mediaData.fileName, {
+        fileUrl: mediaData.url,
+        fileName: mediaData.fileName,
+        fileSize: mediaData.fileSize,
+        type: mediaData.type,
+        s3Key: mediaData.s3Key
+      });
+    } catch (err) {
+      setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
+      setError(err.message || 'Failed to send media');
+    }
+  };
+
+  const handleDragEnter = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget === e.target) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDragOver = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+
+  const handleDrop = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+
+    if (!selectedConversation) {
+      setError('Select a conversation first');
+      return;
+    }
+
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      fileInputRef.current?.uploadFile(files[0]);
+    }
+  };
+
+  const startConversation = async (userId) => {
+    try {
+      const conversation = await chatService.getOrCreateConversation(userId);
+      const conversationId = conversation._id;
+      if (!conversationId) {
+        setError('Invalid conversation response from server');
+        return;
+      }
+      loadConversations();
+      loadMessages(conversationId);
+      setSearchQuery('');
+      setSearchResults([]);
+    } catch (err) {
+      setError('Failed to start conversation');
+      console.error('Start conversation error:', err);
+    }
+  };
+
+  const displayName = (person) => {
+    if (!person) return 'User';
+    return contactNicknames[String(person._id || person.id)] || person.name || 'User';
+  };
+
+  const handleSetNickname = async (contact) => {
+    const current = contactNicknames[String(contact._id)] || '';
+    const input = window.prompt(
+      `Nickname for ${contact.name} (leave empty to remove):`,
+      current
+    );
+    if (input === null) return;
+
+    try {
+      const nickname = await chatService.setContactNickname(contact._id, input);
+      setContactNicknames(prev => {
+        const next = { ...prev };
+        if (nickname) {
+          next[String(contact._id)] = nickname;
+        } else {
+          delete next[String(contact._id)];
+        }
+        return next;
+      });
+      setContacts(prev => prev.map(c =>
+        c._id === contact._id ? { ...c, nickname } : c
+      ));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to set nickname');
+    }
+  };
+
+  const getOtherParticipant = (conv) => {
+    if (!conv || conv.type !== 'private') return null;
+    return conv.participants?.find(p => String(p._id) !== String(user?.id)) || null;
+  };
+
+  const isUnknownSender = (conv) => {
+    const other = getOtherParticipant(conv);
+    return !!other && !contactIds.has(String(other._id));
+  };
+
   const handleAddContact = async (e) => {
-    const contactId = await handleAddContactBase(e);
-    if (contactId) {
-      await startConversation(contactId);
+    e.preventDefault();
+    if (!contactEmail.trim()) return;
+
+    setAddingContact(true);
+    setContactMessage('');
+    try {
+      const contact = await chatService.addContact(contactEmail.trim());
+      setContactIds(prev => new Set([...prev, String(contact._id)]));
+      setContactEmail('');
+      setContactMessage(`✓ ${contact.name} added`);
+      setTimeout(() => setContactMessage(''), 3000);
+      startConversation(contact._id);
+    } catch (err) {
+      setContactMessage(err.response?.data?.message || 'Failed to add contact');
+      setTimeout(() => setContactMessage(''), 3000);
+    } finally {
+      setAddingContact(false);
+    }
+  };
+
+  const handleAddUnknownContact = async (otherUser) => {
+    if (!otherUser?.email) return;
+    try {
+      const contact = await chatService.addContact(otherUser.email);
+      setContactIds(prev => new Set([...prev, String(contact._id)]));
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to add contact');
+    }
+  };
+
+  const handleOpenProfile = async () => {
+    setLoadingContacts(true);
+    try {
+      const contacts = await chatService.getContacts();
+      setContacts(contacts || []);
+      setActiveTab('profile');
+    } catch (err) {
+      console.error('Failed to load contacts:', err);
+      setContacts([]);
+    } finally {
+      setLoadingContacts(false);
+    }
+  };
+
+  const handleRemoveContact = async (contactId) => {
+    try {
+      await chatService.removeContact(contactId);
+      setContacts(prev => prev.filter(c => c._id !== contactId));
+      setContactIds(prev => {
+        const next = new Set(prev);
+        next.delete(String(contactId));
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to remove contact:', err);
+    }
+  };
+
+  const handleCloseChat = () => {
+    if (selectedConversation) {
+      socketWrapper.leaveConversation(selectedConversation);
+    }
+    selectedConversationRef.current = null;
+    activeConversationRef.current = null;
+    setSelectedConversation(null);
+    setMessages([]);
+    setTypingUsers([]);
+    setActiveTab('chats');
+  };
+
+  const handleDeleteMessage = async () => {
+    if (!contextMenu) return;
+    try {
+      await chatService.deleteMessage(contextMenu._id);
+      setMessages(prev => prev.filter(m => m._id !== contextMenu._id));
+      setContextMenu(null);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete message');
+      setContextMenu(null);
+    }
+  };
+
+  const handleMessageLongPress = (message) => {
+    setContextMenu(message);
+  };
+
+  const handleDeleteConversation = async (conversationId) => {
+    if (!window.confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
+      return;
+    }
+
+    try {
+      await chatService.deleteConversation(conversationId);
+      setConversations(prev => prev.filter(conv => conv._id !== conversationId));
+      setSelectedConversation(null);
+      setMessages([]);
+      setError('');
+    } catch (err) {
+      setError('Failed to delete conversation');
+      console.error(err);
+    }
+  };
+
+  const getConversationName = (conversation) => {
+    try {
+      if (!conversation || !user) return 'Unknown';
+
+      if (conversation.type === 'group') {
+        return conversation.name || 'Group Chat';
+      }
+
+      if (!conversation.participants || conversation.participants.length === 0) {
+        return 'Unknown';
+      }
+
+      const otherUser = conversation.participants.find(p => {
+        if (!p || !p._id) return false;
+        const pId = String(p._id);
+        const userId = String(user.id);
+        return pId !== userId;
+      });
+
+      return otherUser ? displayName(otherUser) : 'Unknown';
+    } catch (error) {
+      console.error('Error in getConversationName:', error);
+      return 'Unknown';
     }
   };
 
@@ -490,8 +1058,8 @@ export const Chat = () => {
             onClick={() => {
               setActiveTab('contacts');
               setLoadingContacts(true);
-              chatAPI.getContacts()
-                .then(res => setContacts(res.data.contacts || []))
+              chatService.getContacts()
+                .then(contacts => setContacts(contacts || []))
                 .catch(() => setContacts([]))
                 .finally(() => setLoadingContacts(false));
             }}
