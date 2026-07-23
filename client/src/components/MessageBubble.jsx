@@ -1,12 +1,32 @@
-import React from 'react';
+import React, { useRef, useState } from 'react';
 import { MediaMessage } from './MediaMessage';
 
-export const MessageBubble = ({ message, isCurrentUser, displayName, user }) => {
+export const MessageBubble = ({ message, isCurrentUser, displayName, user, onLongPress }) => {
   if (!message || !message.sender) return null;
+
+  const bubbleRef = useRef(null);
+  const longPressTimeoutRef = useRef(null);
+  const [isPressed, setIsPressed] = useState(false);
 
   const displayContent = message.undecryptable ? null : message.content;
   const isRead = isCurrentUser && (message.readBy || []).some(r => String(r.user?._id || r.user) !== String(user?.id));
   const isDelivered = isCurrentUser && (message.deliveredTo || []).some(d => String(d?._id || d) !== String(user?.id));
+
+  const handlePointerDown = () => {
+    setIsPressed(true);
+    longPressTimeoutRef.current = setTimeout(() => {
+      if (onLongPress) {
+        onLongPress(message);
+      }
+    }, 500);
+  };
+
+  const handlePointerUp = () => {
+    setIsPressed(false);
+    if (longPressTimeoutRef.current) {
+      clearTimeout(longPressTimeoutRef.current);
+    }
+  };
 
   return (
     <div className={`flex items-end gap-1 md:gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
@@ -15,11 +35,18 @@ export const MessageBubble = ({ message, isCurrentUser, displayName, user }) => 
           {message.sender?.name?.charAt(0).toUpperCase() || 'U'}
         </div>
       )}
-      <div className={`max-w-[85%] md:max-w-sm px-3 md:px-4 py-2 md:py-3 rounded-2xl text-sm md:text-base ${
-        isCurrentUser
-          ? 'bg-blue-600 text-white rounded-br-none'
-          : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
-      }`}>
+      <div
+        ref={bubbleRef}
+        onPointerDown={handlePointerDown}
+        onPointerUp={handlePointerUp}
+        onPointerLeave={handlePointerUp}
+        className={`max-w-[85%] md:max-w-sm px-3 md:px-4 py-2 md:py-3 rounded-2xl text-sm md:text-base cursor-pointer transition-opacity ${
+          isPressed ? 'opacity-75' : 'opacity-100'
+        } ${
+          isCurrentUser
+            ? 'bg-blue-600 text-white rounded-br-none'
+            : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
+        }`}>
         {!isCurrentUser && (
           <p className="text-xs font-semibold text-gray-500 mb-0.5">{displayName}</p>
         )}
