@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef } from 'react';
 import chatAPI from '../services/chatService';
 import { encryptMessage, getKeys } from '../services/cryptoService';
 import {
@@ -19,15 +19,10 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
   const [contextMenu, setContextMenu] = useState(null);
   const [isDragging, setIsDragging] = useState(false);
 
-  const messagesEndRef = useRef(null);
   const typingTimeoutRef = useRef(null);
   const fileInputRef = useRef(null);
   const selectedConversationRef = useRef(null);
   const activeConversationRef = useRef(null);
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
 
   const loadMessages = async (conversationId) => {
     try {
@@ -252,7 +247,6 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
     selectedConversation,
     selectedConversationRef,
     activeConversationRef,
-    messagesEndRef,
     typingTimeoutRef,
     fileInputRef,
     contextMenu, setContextMenu,

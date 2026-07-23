@@ -201,11 +201,8 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
     }
   };
 
+  // Confirmation is handled by the caller (a Modal), not here.
   const handleDeleteConversation = async (conversationId) => {
-    if (!window.confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
-      return;
-    }
-
     try {
       await chatAPI.deleteConversation(conversationId);
       setConversations(prev => prev.filter(conv => conv._id !== conversationId));
