@@ -1,12 +1,13 @@
 import React, { useRef, useState } from 'react';
+import { Clock, Check, CheckCheck } from 'lucide-react';
 import { MediaMessage } from './MediaMessage';
 
-export const MessageBubble = ({ message, isCurrentUser, displayName, user, onLongPress }) => {
-  if (!message || !message.sender) return null;
-
+export const MessageBubble = ({ message, isCurrentUser, displayName, user, onLongPress, isFirstInGroup = true, isLastInGroup = true }) => {
   const bubbleRef = useRef(null);
   const longPressTimeoutRef = useRef(null);
   const [isPressed, setIsPressed] = useState(false);
+
+  if (!message || !message.sender) return null;
 
   const displayContent = message.undecryptable ? null : message.content;
   const isRead = isCurrentUser && (message.readBy || []).some(r => String(r.user?._id || r.user) !== String(user?.id));
@@ -29,11 +30,15 @@ export const MessageBubble = ({ message, isCurrentUser, displayName, user, onLon
   };
 
   return (
-    <div className={`flex items-end gap-1 md:gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
+    <div className={`flex items-end gap-1 md:gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'} ${isFirstInGroup ? 'mt-2.5' : 'mt-0.5'}`}>
       {!isCurrentUser && (
-        <div className="w-6 md:w-8 h-6 md:h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-          {message.sender?.name?.charAt(0).toUpperCase() || 'U'}
-        </div>
+        isLastInGroup ? (
+          <div className="w-6 md:w-8 h-6 md:h-8 bg-gradient-to-br from-accent to-accent-hover rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
+            {message.sender?.name?.charAt(0).toUpperCase() || 'U'}
+          </div>
+        ) : (
+          <div className="w-6 md:w-8 flex-shrink-0" aria-hidden="true" />
+        )
       )}
       <div
         ref={bubbleRef}
@@ -44,22 +49,28 @@ export const MessageBubble = ({ message, isCurrentUser, displayName, user, onLon
           isPressed ? 'opacity-75' : 'opacity-100'
         } ${
           isCurrentUser
-            ? 'bg-blue-600 text-white rounded-br-none'
-            : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'
+            ? `bg-blue-600 text-white ${isLastInGroup ? 'rounded-br-none' : ''}`
+            : `bg-white text-gray-900 border border-gray-200 ${isLastInGroup ? 'rounded-bl-none' : ''}`
         }`}>
-        {!isCurrentUser && (
+        {!isCurrentUser && isFirstInGroup && (
           <p className="text-xs font-semibold text-gray-500 mb-0.5">{displayName}</p>
         )}
         {message.fileUrl && <MediaMessage message={message} isCurrentUser={isCurrentUser} />}
         {!message.fileUrl && displayContent && <p className="break-words text-sm">{displayContent}</p>}
         {message.undecryptable && <p className="text-sm italic opacity-60">🔒 Encrypted</p>}
-        <p className={`text-xs mt-1 md:mt-2 flex items-center gap-0.5 ${
+        <p className={`text-xs mt-1 md:mt-2 flex items-center gap-1 ${
           isCurrentUser ? 'text-blue-100 justify-end' : 'text-gray-400'
         }`}>
           {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           {isCurrentUser && (
-            <span className={`font-bold ${message.isOptimistic ? 'text-blue-300' : isRead ? 'text-cyan-300' : 'text-blue-100'}`}>
-              {message.isOptimistic ? '🕓' : (isRead || isDelivered) ? '✓✓' : '✓'}
+            <span className={message.isOptimistic ? 'text-blue-300' : isRead ? 'text-cyan-300' : 'text-blue-100'}>
+              {message.isOptimistic ? (
+                <Clock className="w-3.5 h-3.5" />
+              ) : (isRead || isDelivered) ? (
+                <CheckCheck className="w-3.5 h-3.5" />
+              ) : (
+                <Check className="w-3.5 h-3.5" />
+              )}
             </span>
           )}
         </p>

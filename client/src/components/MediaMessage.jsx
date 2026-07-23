@@ -66,8 +66,9 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
             />
             <button
               onClick={downloadFile}
-              className="p-2 hover:bg-gray-200 rounded-lg transition-colors"
+              className="p-2 hover:bg-gray-200 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               title="Download audio"
+              aria-label="Download audio"
             >
               ⬇
             </button>
@@ -97,8 +98,9 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
                 e.stopPropagation();
                 downloadFile();
               }}
-              className="p-2 hover:bg-gray-300 rounded transition-colors flex-shrink-0"
+              className="p-2 hover:bg-gray-300 rounded transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
               title="Download file"
+              aria-label="Download file"
             >
               ⬇
             </button>

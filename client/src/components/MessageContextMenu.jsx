@@ -22,13 +22,14 @@ export const MessageContextMenu = ({ message, isCurrentUser, onClose, onCopy, on
   return (
     <div
       ref={menuRef}
-      className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 rounded-t-2xl shadow-2xl z-50 animate-in slide-in-from-bottom"
+      className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 rounded-t-2xl shadow-2xl z-50 animate-sheet-slide-up"
     >
       <div className="flex justify-between items-center p-4 border-b border-gray-100">
         <h3 className="text-sm font-semibold text-gray-900">Message Options</h3>
         <button
           onClick={onClose}
-          className="p-1 rounded-lg text-gray-500 hover:bg-gray-100"
+          aria-label="Close"
+          className="p-1 rounded-lg text-gray-500 hover:bg-gray-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         >
           <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
