@@ -18,7 +18,8 @@ export const ChatHeader = ({ conversation, onBack, user }) => {
         {onBack && (
           <button
             onClick={onBack}
-            className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center"
+            aria-label="Back to conversations"
+            className="md:hidden p-2 rounded-lg text-gray-600 hover:bg-gray-100 flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
             <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
