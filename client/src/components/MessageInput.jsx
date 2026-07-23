@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useRef, useEffect } from 'react';
 import { MediaUploader } from './MediaUploader';
 
 export const MessageInput = React.forwardRef(({
@@ -11,6 +11,23 @@ export const MessageInput = React.forwardRef(({
   conversationId,
   onUploadSuccess
 }, ref) => {
+  const formRef = useRef(ref);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    const handleInputFocus = () => {
+      setTimeout(() => {
+        inputRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }, 300);
+    };
+
+    const input = inputRef.current;
+    if (input) {
+      input.addEventListener('focus', handleInputFocus);
+      return () => input.removeEventListener('focus', handleInputFocus);
+    }
+  }, []);
+
   return (
     <form onSubmit={onSubmit} className="p-3 md:p-4 pb-3 md:pb-4 pb-[calc(0.75rem+env(safe-area-inset-bottom))] md:pb-[calc(1rem+env(safe-area-inset-bottom))] border-t border-gray-100 bg-white flex-shrink-0" ref={ref}>
       {error && (
@@ -30,6 +47,7 @@ export const MessageInput = React.forwardRef(({
           />
         </div>
         <input
+          ref={inputRef}
           type="text"
           value={value}
           onChange={onChange}

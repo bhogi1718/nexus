@@ -6,6 +6,9 @@ import { MessageBubble } from '../components/MessageBubble';
 import { TypingIndicator } from '../components/TypingIndicator';
 import { ChatHeader } from '../components/ChatHeader';
 import { MessageInput } from '../components/MessageInput';
+import { SkeletonMessage } from '../components/SkeletonMessage';
+import { MessageContextMenu } from '../components/MessageContextMenu';
+import { EmptyState } from '../components/EmptyState';
 import { encryptMessage, decryptMessage, getKeys } from '../services/cryptoService';
 import {
   getSocket,
@@ -38,7 +41,9 @@ export const Chat = () => {
   const [messages, setMessages] = useState([]);
   const [messageInput, setMessageInput] = useState('');
   const [loading, setLoading] = useState(true);
+  const [loadingMessages, setLoadingMessages] = useState(false);
   const [error, setError] = useState('');
+  const [contextMenu, setContextMenu] = useState(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [contactEmail, setContactEmail] = useState('');
@@ -290,6 +295,7 @@ export const Chat = () => {
         leaveConversation(selectedConversation);
       }
 
+      setLoadingMessages(true);
       const response = await chatAPI.getMessages(conversationId);
       let conversation = conversations.find(c => c._id === conversationId);
       if (!conversation) {
@@ -307,6 +313,7 @@ export const Chat = () => {
       setMessages(decryptedMessages);
       setSelectedConversation(conversationId);
       setTypingUsers([]);
+      setLoadingMessages(false);
 
       joinConversation(conversationId);
 
@@ -316,6 +323,7 @@ export const Chat = () => {
       chatAPI.markConversationRead(conversationId).catch(() => {});
     } catch (err) {
       setError('Failed to load messages');
+      setLoadingMessages(false);
       console.error(err);
     }
   };
@@ -616,6 +624,23 @@ export const Chat = () => {
     setActiveTab('chats');
   };
 
+  const handleDeleteMessage = async () => {
+    if (!contextMenu) return;
+    try {
+      await chatAPI.deleteMessage(contextMenu._id);
+      setMessages(prev => prev.filter(m => m._id !== contextMenu._id));
+      setContextMenu(null);
+      setError('');
+    } catch (err) {
+      setError(err.response?.data?.message || 'Failed to delete message');
+      setContextMenu(null);
+    }
+  };
+
+  const handleMessageLongPress = (message) => {
+    setContextMenu(message);
+  };
+
   const handleDeleteConversation = async (conversationId) => {
     if (!window.confirm('Are you sure you want to delete this conversation? This action cannot be undone.')) {
       return;
@@ -828,7 +853,14 @@ export const Chat = () => {
               />
 
               <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
-                {messages.length === 0 ? (
+                {loadingMessages ? (
+                  <>
+                    <SkeletonMessage isCurrentUser={false} />
+                    <SkeletonMessage isCurrentUser={true} />
+                    <SkeletonMessage isCurrentUser={false} />
+                    <SkeletonMessage isCurrentUser={true} />
+                  </>
+                ) : messages.length === 0 ? (
                   <div className="text-center text-gray-500 py-12 text-sm">No messages yet</div>
                 ) : (
                   messages.map(message => {
@@ -841,6 +873,7 @@ export const Chat = () => {
                         isCurrentUser={isCurrentUser}
                         displayName={displayName(message.sender)}
                         user={user}
+                        onLongPress={handleMessageLongPress}
                       />
                     );
                   })
@@ -864,37 +897,41 @@ export const Chat = () => {
             <>
               {/* Chats Tab */}
               {activeTab === 'chats' && (
-                <div className="flex-1 overflow-y-auto">
-                  <div className="p-3 space-y-2">
+                <div className="flex-1 overflow-y-auto flex flex-col">
+                  <div className="p-3 space-y-2 flex-shrink-0">
                     <input type="text" placeholder="Search..." value={searchQuery} onChange={handleSearch} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
                   </div>
                   {searchResults.length > 0 ? (
-                    searchResults.map(searchUser => (
-                      <button key={searchUser._id} onClick={() => startConversation(searchUser._id)} className="w-full p-4 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors">
-                        <p className="font-semibold text-gray-900 text-sm">{searchUser.name}</p>
-                        <p className="text-xs text-gray-500">{searchUser.email}</p>
-                      </button>
-                    ))
-                  ) : conversations.length === 0 ? (
-                    <div className="p-6 text-center text-gray-500 text-sm">No conversations yet</div>
-                  ) : (
-                    conversations.map(conversation => {
-                      const hasUnread = (conversation.unreadCount || 0) > 0;
-                      return (
-                        <button key={conversation._id} onClick={() => loadMessages(conversation._id)} className={`w-full p-4 text-left border-b border-gray-100 transition-colors min-h-[70px] flex flex-col justify-center ${hasUnread ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-50'}`}>
-                          <div className="flex items-center justify-between gap-2">
-                            <p className={`truncate flex items-center gap-1.5 flex-1 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'} text-sm`}>
-                              {getConversationName(conversation)}
-                              {isUnknownSender(conversation) && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">Unknown</span>}
-                            </p>
-                            {hasUnread && <span className="flex-shrink-0 min-w-[24px] h-6 px-1.5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</span>}
-                          </div>
-                          <p className={`text-xs truncate mt-1 ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'}`}>
-                            {conversation.lastMessage?.undecryptable ? '🔒 Encrypted' : conversation.lastMessage?.content || 'No messages yet'}
-                          </p>
+                    <div className="flex-1 overflow-y-auto">
+                      {searchResults.map(searchUser => (
+                        <button key={searchUser._id} onClick={() => startConversation(searchUser._id)} className="w-full p-4 text-left hover:bg-gray-50 border-b border-gray-100 transition-colors">
+                          <p className="font-semibold text-gray-900 text-sm">{searchUser.name}</p>
+                          <p className="text-xs text-gray-500">{searchUser.email}</p>
                         </button>
-                      );
-                    })
+                      ))}
+                    </div>
+                  ) : conversations.length === 0 ? (
+                    <EmptyState type="noConversations" />
+                  ) : (
+                    <div className="flex-1 overflow-y-auto">
+                      {conversations.map(conversation => {
+                        const hasUnread = (conversation.unreadCount || 0) > 0;
+                        return (
+                          <button key={conversation._id} onClick={() => loadMessages(conversation._id)} className={`w-full p-4 text-left border-b border-gray-100 transition-colors min-h-[70px] flex flex-col justify-center ${hasUnread ? 'bg-blue-50 border-l-4 border-l-blue-600' : 'hover:bg-gray-50'}`}>
+                            <div className="flex items-center justify-between gap-2">
+                              <p className={`truncate flex items-center gap-1.5 flex-1 ${hasUnread ? 'font-bold text-gray-900' : 'font-semibold text-gray-900'} text-sm`}>
+                                {getConversationName(conversation)}
+                                {isUnknownSender(conversation) && <span className="px-2 py-0.5 bg-amber-100 text-amber-700 text-xs font-semibold rounded-full">Unknown</span>}
+                              </p>
+                              {hasUnread && <span className="flex-shrink-0 min-w-[24px] h-6 px-1.5 bg-blue-600 text-white text-xs font-bold rounded-full flex items-center justify-center">{conversation.unreadCount > 99 ? '99+' : conversation.unreadCount}</span>}
+                            </div>
+                            <p className={`text-xs truncate mt-1 ${hasUnread ? 'font-semibold text-gray-800' : 'text-gray-500'}`}>
+                              {conversation.lastMessage?.undecryptable ? '🔒 Encrypted' : conversation.lastMessage?.content || 'No messages yet'}
+                            </p>
+                          </button>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               )}
@@ -902,7 +939,7 @@ export const Chat = () => {
               {/* Contacts Tab */}
               {activeTab === 'contacts' && (
                 <div className="flex-1 overflow-y-auto flex flex-col">
-                  <div className="p-3 space-y-2 border-b border-gray-100">
+                  <div className="p-3 space-y-2 border-b border-gray-100 flex-shrink-0">
                     <form onSubmit={handleAddContact} className="flex gap-2">
                       <input type="email" placeholder="Add contact..." value={contactEmail} onChange={(e) => setContactEmail(e.target.value)} className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm" />
                       <button type="submit" disabled={addingContact || !contactEmail.trim()} className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors min-h-[40px]">
@@ -913,9 +950,9 @@ export const Chat = () => {
                   </div>
                   <div className="flex-1 overflow-y-auto">
                     {loadingContacts ? (
-                      <div className="p-6 text-center text-gray-500 text-sm">Loading...</div>
+                      <EmptyState type="noContacts" />
                     ) : contacts.length === 0 ? (
-                      <div className="p-6 text-center text-gray-500 text-sm">No contacts yet</div>
+                      <EmptyState type="noContacts" />
                     ) : (
                       contacts.map(contact => (
                         <div key={contact._id} className="flex items-center gap-3 p-4 border-b border-gray-50 hover:bg-gray-50">
@@ -978,26 +1015,36 @@ export const Chat = () => {
                 user={user}
               />
 
-              <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-2.5 md:space-y-4 bg-gray-50">
-                {messages.length === 0 ? (
-                  <div className="text-center text-gray-500 py-12 text-sm md:text-base">No messages yet</div>
+              <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-2.5 md:space-y-4 bg-gray-50 flex flex-col">
+                {loadingMessages ? (
+                  <div className="space-y-2.5">
+                    <SkeletonMessage isCurrentUser={false} />
+                    <SkeletonMessage isCurrentUser={true} />
+                    <SkeletonMessage isCurrentUser={false} />
+                    <SkeletonMessage isCurrentUser={true} />
+                  </div>
+                ) : messages.length === 0 ? (
+                  <EmptyState type="noMessages" />
                 ) : (
-                  messages.map(message => {
-                    const senderId = message.sender?._id || message.sender?.id;
-                    const isCurrentUser = String(senderId) === String(user?.id);
-                    return (
-                      <MessageBubble
-                        key={message._id}
-                        message={message}
-                        isCurrentUser={isCurrentUser}
-                        displayName={displayName(message.sender)}
-                        user={user}
-                      />
-                    );
-                  })
+                  <div className="space-y-2.5 md:space-y-4">
+                    {messages.map(message => {
+                      const senderId = message.sender?._id || message.sender?.id;
+                      const isCurrentUser = String(senderId) === String(user?.id);
+                      return (
+                        <MessageBubble
+                          key={message._id}
+                          message={message}
+                          isCurrentUser={isCurrentUser}
+                          displayName={displayName(message.sender)}
+                          user={user}
+                          onLongPress={handleMessageLongPress}
+                        />
+                      );
+                    })}
+                    {typingUsers.length > 0 && <TypingIndicator />}
+                    <div ref={messagesEndRef} />
+                  </div>
                 )}
-                {typingUsers.length > 0 && <TypingIndicator />}
-                <div ref={messagesEndRef} />
               </div>
 
               <MessageInput
@@ -1011,7 +1058,7 @@ export const Chat = () => {
               />
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-gray-500">Select a conversation to start chatting</div>
+            <EmptyState type="selectConversation" />
           )}
         </div>
       </div>
@@ -1054,6 +1101,16 @@ export const Chat = () => {
             <span className="text-xs font-medium">Profile</span>
           </button>
         </div>
+      )}
+
+      {contextMenu && (
+        <MessageContextMenu
+          message={contextMenu}
+          isCurrentUser={String(contextMenu.sender?._id || contextMenu.sender?.id) === String(user?.id)}
+          onClose={() => setContextMenu(null)}
+          onCopy={() => setContextMenu(null)}
+          onDelete={handleDeleteMessage}
+        />
       )}
     </div>
   );
