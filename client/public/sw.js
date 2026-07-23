@@ -1,7 +1,5 @@
-const CACHE_NAME = 'nexus-v1';
+const CACHE_NAME = 'nexus-v2';
 const URLS_TO_CACHE = [
-  '/',
-  '/index.html',
   '/manifest.json',
 ];
 
@@ -49,7 +47,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Cache-first strategy for static assets
+  // Network-first for page navigations so a redeploy is never masked by a stale cache
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      fetch(event.request).catch(() => caches.match(event.request))
+    );
+    return;
+  }
+
+  // Cache-first for hashed static assets (safe: filename changes when content changes)
   event.respondWith(
     caches.match(event.request).then((response) => {
       if (response) {
@@ -57,12 +63,10 @@ self.addEventListener('fetch', (event) => {
       }
 
       return fetch(event.request).then((response) => {
-        // Don't cache non-successful responses
         if (!response || response.status !== 200 || response.type === 'error') {
           return response;
         }
 
-        // Clone the response
         const responseToCache = response.clone();
         caches.open(CACHE_NAME).then((cache) => {
           cache.put(event.request, responseToCache);
