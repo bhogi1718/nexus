@@ -1,9 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import chatAPI from '../services/chatService';
-import { MediaUploader } from '../components/MediaUploader';
-import { MediaMessage } from '../components/MediaMessage';
 import { InstallPrompt } from '../components/InstallPrompt';
+import { MessageBubble } from '../components/MessageBubble';
+import { TypingIndicator } from '../components/TypingIndicator';
+import { ChatHeader } from '../components/ChatHeader';
+import { MessageInput } from '../components/MessageInput';
 import { encryptMessage, decryptMessage, getKeys } from '../services/cryptoService';
 import {
   getSocket,
@@ -697,9 +699,9 @@ export const Chat = () => {
       </nav>
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden lg:flex-row lg:gap-6 lg:p-6">
+      <div className="flex-1 flex flex-col min-h-0 overflow-hidden md:flex-row md:gap-4 lg:gap-6 md:p-4 lg:p-6">
         {/* Desktop Sidebar - Hidden on mobile */}
-        <div className="hidden lg:flex lg:w-80 lg:flex-col bg-white lg:rounded-2xl shadow-lg lg:shadow-sm lg:border lg:border-gray-100 overflow-hidden flex-shrink-0">
+        <div className="hidden md:flex md:w-72 lg:w-80 md:flex-col bg-white md:rounded-2xl shadow-lg md:shadow-sm md:border md:border-gray-100 overflow-hidden flex-shrink-0">
           {/* Profile Section */}
           <div className="p-4 border-b border-gray-100 bg-gradient-to-r from-blue-50 to-indigo-50">
             <div className="flex items-center gap-3">
@@ -814,111 +816,48 @@ export const Chat = () => {
           </div>
         </div>
 
-        {/* Mobile Tab Content - Hidden on desktop */}
-        <div className="flex-1 flex flex-col min-h-0 lg:hidden pb-16">
+        {/* Mobile Tab Content - Hidden on tablet/desktop */}
+        <div className="flex-1 flex flex-col min-h-0 md:hidden pb-[calc(4rem+env(safe-area-inset-bottom))]">
           {selectedConversation ? (
-            /* Chat View */
+            /* Mobile Chat View */
             <>
-              {/* Chat Header */}
-              <div className="p-3 border-b border-gray-100 bg-white flex-shrink-0">
-                {conversations.map(conv => {
-                  if (conv._id === selectedConversation) {
-                    const otherUser = conv.type === 'group' ? null : conv.participants.find(p => String(p._id) !== String(user.id));
-                    return (
-                      <div key={conv._id} className="flex items-center justify-between gap-2">
-                        <button
-                          onClick={handleCloseChat}
-                          className="p-2 rounded-lg text-gray-600 hover:bg-gray-100 flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center"
-                        >
-                          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
-                          </svg>
-                        </button>
-                        <div className="flex-1 min-w-0">
-                          <h2 className="text-base font-bold text-gray-900 truncate">{getConversationName(conv)}</h2>
-                          <p className="text-xs text-gray-500">
-                            {conv.type === 'group' ? `${conv.participants.length} members` : (otherUser?.isOnline ? 'Online' : 'Offline')}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  }
-                })}
-              </div>
+              <ChatHeader
+                conversation={conversations.find(c => c._id === selectedConversation)}
+                onBack={handleCloseChat}
+                user={user}
+              />
 
-              {/* Messages */}
               <div className="flex-1 overflow-y-auto p-3 space-y-2.5 bg-gray-50">
                 {messages.length === 0 ? (
                   <div className="text-center text-gray-500 py-12 text-sm">No messages yet</div>
                 ) : (
                   messages.map(message => {
-                    if (!message || !message.sender) return null;
                     const senderId = message.sender?._id || message.sender?.id;
                     const isCurrentUser = String(senderId) === String(user?.id);
-                    const displayContent = message.undecryptable ? null : message.content;
-                    const isRead = isCurrentUser && (message.readBy || []).some(r => String(r.user?._id || r.user) !== String(user.id));
-                    const isDelivered = isCurrentUser && (message.deliveredTo || []).some(d => String(d?._id || d) !== String(user.id));
-
                     return (
-                      <div key={message._id} className={`flex items-end gap-1 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                        {!isCurrentUser && (
-                          <div className="w-6 h-6 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                            {message.sender?.name?.charAt(0).toUpperCase() || 'U'}
-                          </div>
-                        )}
-                        <div className={`max-w-[85%] px-3 py-2 rounded-2xl text-sm ${isCurrentUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'}`}>
-                          {!isCurrentUser && (
-                            <p className="text-xs font-semibold text-gray-500 mb-0.5">{displayName(message.sender)}</p>
-                          )}
-                          {message.fileUrl && <MediaMessage message={message} isCurrentUser={isCurrentUser} />}
-                          {!message.fileUrl && displayContent && <p className="text-sm break-words">{displayContent}</p>}
-                          {message.undecryptable && <p className="text-sm italic opacity-60">🔒 Encrypted</p>}
-                          <p className={`text-xs mt-1 flex items-center gap-0.5 ${isCurrentUser ? 'text-blue-100 justify-end' : 'text-gray-400'}`}>
-                            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            {isCurrentUser && (
-                              <span className={`font-bold ${message.isOptimistic ? 'text-blue-300' : isRead ? 'text-cyan-300' : 'text-blue-100'}`}>
-                                {message.isOptimistic ? '🕓' : (isRead || isDelivered) ? '✓✓' : '✓'}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
+                      <MessageBubble
+                        key={message._id}
+                        message={message}
+                        isCurrentUser={isCurrentUser}
+                        displayName={displayName(message.sender)}
+                        user={user}
+                      />
                     );
                   })
                 )}
-                {typingUsers.length > 0 && (
-                  <div className="flex items-center gap-1 px-3 py-1 text-gray-500 text-xs">
-                    <span className="flex gap-1">
-                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce"></span>
-                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-                      <span className="w-1 h-1 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                    </span>
-                    Someone is typing...
-                  </div>
-                )}
+                {typingUsers.length > 0 && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Input Area */}
-              <form onSubmit={handleSendMessage} className="p-3 border-t border-gray-100 bg-white flex-shrink-0">
-                {error && (
-                  <div className="mb-2 p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg flex items-center gap-2">
-                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                    {error}
-                  </div>
-                )}
-                <div className="flex gap-2 items-end">
-                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
-                    <MediaUploader ref={fileInputRef} onUploadSuccess={handleMediaUploadSuccess} conversationId={selectedConversation} />
-                  </div>
-                  <input type="text" value={messageInput} onChange={handleMessageInputChange} placeholder="Type..." className="flex-1 px-3 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm min-h-[40px]" />
-                  <button type="submit" disabled={!messageInput.trim()} className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 text-sm min-w-[40px] min-h-[40px] flex items-center justify-center">
-                    Send
-                  </button>
-                </div>
-              </form>
+              <MessageInput
+                value={messageInput}
+                onChange={handleMessageInputChange}
+                onSubmit={handleSendMessage}
+                fileInputRef={fileInputRef}
+                error={error}
+                conversationId={selectedConversation}
+                onUploadSuccess={handleMediaUploadSuccess}
+              />
             </>
           ) : (
             /* Tab Content */
@@ -1023,8 +962,8 @@ export const Chat = () => {
           )}
         </div>
 
-        {/* Desktop Chat Area */}
-        <div className="hidden lg:flex lg:flex-1 bg-white lg:rounded-2xl shadow-lg shadow-sm border border-gray-100 flex-col min-h-0 overflow-hidden" onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
+        {/* Unified Chat Area (Tablet/Desktop) */}
+        <div className="hidden md:flex md:flex-1 bg-white md:rounded-2xl shadow-lg md:shadow-sm md:border md:border-gray-100 flex-col min-h-0 overflow-hidden" onDragEnter={handleDragEnter} onDragLeave={handleDragLeave} onDragOver={handleDragOver} onDrop={handleDrop}>
           {isDragging && (
             <div className="absolute inset-0 bg-blue-500 bg-opacity-10 border-2 border-dashed border-blue-500 rounded-2xl flex items-center justify-center z-40 pointer-events-none">
               <svg className="w-16 h-16 text-blue-500 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1034,86 +973,42 @@ export const Chat = () => {
           )}
           {selectedConversation ? (
             <>
-              <div className="p-4 border-b border-gray-100 bg-white flex-shrink-0">
-                {conversations.find(c => c._id === selectedConversation) && (
-                  <div>
-                    <h2 className="text-xl font-bold text-gray-900">{getConversationName(conversations.find(c => c._id === selectedConversation))}</h2>
-                    <p className="text-sm text-gray-500">
-                      {conversations.find(c => c._id === selectedConversation)?.type === 'group' ? `${conversations.find(c => c._id === selectedConversation)?.participants.length} members` : 'Direct message'}
-                    </p>
-                  </div>
-                )}
-              </div>
+              <ChatHeader
+                conversation={conversations.find(c => c._id === selectedConversation)}
+                user={user}
+              />
 
-              <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-gray-50">
+              <div className="flex-1 overflow-y-auto p-3 md:p-6 space-y-2.5 md:space-y-4 bg-gray-50">
                 {messages.length === 0 ? (
-                  <div className="text-center text-gray-500 py-12">No messages yet</div>
+                  <div className="text-center text-gray-500 py-12 text-sm md:text-base">No messages yet</div>
                 ) : (
                   messages.map(message => {
-                    if (!message || !message.sender) return null;
                     const senderId = message.sender?._id || message.sender?.id;
                     const isCurrentUser = String(senderId) === String(user?.id);
-                    const displayContent = message.undecryptable ? null : message.content;
-                    const isRead = isCurrentUser && (message.readBy || []).some(r => String(r.user?._id || r.user) !== String(user.id));
-                    const isDelivered = isCurrentUser && (message.deliveredTo || []).some(d => String(d?._id || d) !== String(user.id));
-
                     return (
-                      <div key={message._id} className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`}>
-                        {!isCurrentUser && (
-                          <div className="w-8 h-8 bg-gradient-to-br from-green-400 to-blue-500 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0">
-                            {message.sender?.name?.charAt(0).toUpperCase() || 'U'}
-                          </div>
-                        )}
-                        <div className={`max-w-sm px-4 py-3 rounded-2xl ${isCurrentUser ? 'bg-blue-600 text-white rounded-br-none' : 'bg-white text-gray-900 rounded-bl-none border border-gray-200'}`}>
-                          {!isCurrentUser && <p className="text-xs font-semibold text-gray-500 mb-1">{displayName(message.sender)}</p>}
-                          {message.fileUrl && <MediaMessage message={message} isCurrentUser={isCurrentUser} />}
-                          {!message.fileUrl && displayContent && <p className="break-words">{displayContent}</p>}
-                          {message.undecryptable && <p className="italic opacity-60">🔒 Encrypted message</p>}
-                          <p className={`text-xs mt-2 flex items-center gap-0.5 ${isCurrentUser ? 'text-blue-100 justify-end' : 'text-gray-400'}`}>
-                            {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            {isCurrentUser && (
-                              <span className={`font-bold ${message.isOptimistic ? 'text-blue-300' : isRead ? 'text-cyan-300' : 'text-blue-100'}`}>
-                                {message.isOptimistic ? '🕓' : (isRead || isDelivered) ? '✓✓' : '✓'}
-                              </span>
-                            )}
-                          </p>
-                        </div>
-                      </div>
+                      <MessageBubble
+                        key={message._id}
+                        message={message}
+                        isCurrentUser={isCurrentUser}
+                        displayName={displayName(message.sender)}
+                        user={user}
+                      />
                     );
                   })
                 )}
-                {typingUsers.length > 0 && (
-                  <div className="flex items-center gap-1 px-4 py-2 text-gray-500 text-sm">
-                    <span className="flex gap-1">
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce"></span>
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-                      <span className="w-2 h-2 bg-gray-400 rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-                    </span>
-                    Someone is typing...
-                  </div>
-                )}
+                {typingUsers.length > 0 && <TypingIndicator />}
                 <div ref={messagesEndRef} />
               </div>
 
-              <form onSubmit={handleSendMessage} className="p-4 border-t border-gray-100 bg-white flex-shrink-0">
-                {error && (
-                  <div className="mb-3 p-3 bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg flex items-center gap-2">
-                    <svg className="w-4 h-4 flex-shrink-0" fill="currentColor" viewBox="0 0 20 20">
-                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                    </svg>
-                    {error}
-                  </div>
-                )}
-                <div className="flex gap-3">
-                  <div className="flex-shrink-0 w-10 h-10 flex items-center justify-center">
-                    <MediaUploader ref={fileInputRef} onUploadSuccess={handleMediaUploadSuccess} conversationId={selectedConversation} />
-                  </div>
-                  <input type="text" value={messageInput} onChange={handleMessageInputChange} placeholder="Type a message..." className="flex-1 px-4 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500" />
-                  <button type="submit" disabled={!messageInput.trim()} className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors disabled:bg-gray-400 min-h-[40px] flex items-center justify-center">
-                    Send
-                  </button>
-                </div>
-              </form>
+              <MessageInput
+                value={messageInput}
+                onChange={handleMessageInputChange}
+                onSubmit={handleSendMessage}
+                fileInputRef={fileInputRef}
+                error={error}
+                conversationId={selectedConversation}
+                onUploadSuccess={handleMediaUploadSuccess}
+              />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-gray-500">Select a conversation to start chatting</div>
@@ -1121,9 +1016,9 @@ export const Chat = () => {
         </div>
       </div>
 
-      {/* Mobile Bottom Tabs - Hidden on desktop */}
+      {/* Mobile Bottom Tabs - Hidden on tablet/desktop */}
       {!selectedConversation && (
-        <div className="lg:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around flex-shrink-0">
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 flex justify-around flex-shrink-0 pb-[env(safe-area-inset-bottom)]">
           <button
             onClick={() => setActiveTab('chats')}
             className={`flex-1 py-3 px-4 flex flex-col items-center gap-1 transition-colors ${activeTab === 'chats' ? 'text-blue-600 bg-blue-50' : 'text-gray-600 hover:bg-gray-50'}`}
