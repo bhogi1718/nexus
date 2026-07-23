@@ -2,9 +2,33 @@
 @tailwind components;
 @tailwind utilities;
 
+:root {
+  --color-background: #F8FAFC;
+  --color-sidebar: #F1F5F9;
+  --color-card: #E2E8F0;
+  --color-border: #CBD5E1;
+  --color-accent: #22C55E;
+  --color-accent-hover: #16A34A;
+  --color-text-primary: #1E293B;
+  --color-text-secondary: #475569;
+  --color-text-muted: #64748B;
+}
+
+:root.dark {
+  --color-background: #0F172A;
+  --color-sidebar: #111827;
+  --color-card: #1E293B;
+  --color-border: #334155;
+  --color-accent: #22C55E;
+  --color-accent-hover: #16A34A;
+  --color-text-primary: #F8FAFC;
+  --color-text-secondary: #CBD5E1;
+  --color-text-muted: #94A3B8;
+}
+
 @layer base {
   body {
-    @apply bg-gray-50 text-gray-900;
+    @apply bg-background text-text-primary transition-colors duration-200;
   }
 
   input {
@@ -18,18 +42,47 @@
 
 @layer components {
   .auth-card {
-    @apply bg-white rounded-2xl shadow-lg p-8 w-full max-w-md;
+    @apply bg-card rounded-2xl shadow-lg p-8 w-full max-w-md;
   }
 
   .auth-input {
-    @apply w-full px-4 py-3 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 hover:bg-white;
+    @apply w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent bg-background text-text-primary placeholder:text-text-muted transition-colors;
   }
 
   .auth-button {
-    @apply w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 rounded-lg transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed;
+    @apply w-full bg-accent hover:bg-accent-hover text-white font-semibold py-3 rounded-lg transition-colors disabled:bg-text-muted disabled:cursor-not-allowed;
   }
 
   .nav-bar {
     @apply bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50;
+  }
+}
+
+@layer utilities {
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  @keyframes sheet-slide-up {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+  }
+
+  @keyframes dialog-scale-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+
+  .animate-fade-in {
+    animation: fade-in 0.15s ease-out;
+  }
+
+  .animate-sheet-slide-up {
+    animation: sheet-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .animate-dialog-scale-in {
+    animation: dialog-scale-in 0.15s ease-out;
   }
 }
