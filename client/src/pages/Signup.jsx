@@ -4,6 +4,7 @@ import { generateKeypair, storeKeys } from '../services/cryptoService';
 import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { Icon } from '../components/ui/Icon';
+import { ShaderBackground } from '../components/ShaderBackground';
 
 const OTP_LENGTH = 6;
 
@@ -80,11 +81,7 @@ export const Signup = () => {
 
   return (
     <div className="min-h-screen bg-background flex items-center justify-center px-4 relative overflow-hidden">
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, #334155 1px, transparent 0)', backgroundSize: '32px 32px' }} />
-        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 blur-[120px] rounded-full" />
-        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 blur-[120px] rounded-full" />
-      </div>
+      <ShaderBackground />
 
       <div className="w-full max-w-md">
         <div className="flex flex-col items-center text-center mb-xl animate-fade-in-up">
