@@ -66,7 +66,7 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
             />
             <button
               onClick={downloadFile}
-              className="p-2 hover:bg-gray-200 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className={`p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isCurrentUser ? 'hover:bg-white/20' : 'hover:bg-card'}`}
               title="Download audio"
               aria-label="Download audio"
             >
@@ -80,15 +80,17 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
         return (
           <div
             onClick={() => setShowPreview(true)}
-            className="flex items-center gap-2 p-3 bg-gray-100 rounded-lg hover:bg-gray-200 cursor-pointer transition-colors"
+            className={`flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors ${
+              isCurrentUser ? 'bg-white/15 hover:bg-white/25' : 'bg-background hover:bg-card'
+            }`}
           >
-            <svg className="w-6 h-6 text-gray-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`w-6 h-6 flex-shrink-0 ${isCurrentUser ? 'text-white' : 'text-text-secondary'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
             </svg>
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm truncate">{message.fileName}</p>
               {message.fileSize && (
-                <p className="text-xs text-gray-500">
+                <p className={`text-xs ${isCurrentUser ? 'text-white/70' : 'text-text-muted'}`}>
                   {(message.fileSize / 1024 / 1024).toFixed(2)} MB
                 </p>
               )}
@@ -98,7 +100,7 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
                 e.stopPropagation();
                 downloadFile();
               }}
-              className="p-2 hover:bg-gray-300 rounded transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              className={`p-2 rounded transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isCurrentUser ? 'hover:bg-white/20' : 'hover:bg-border'}`}
               title="Download file"
               aria-label="Download file"
             >
@@ -107,7 +109,7 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
           </div>
         );
       default:
-        return <p className="text-sm text-gray-500">Unsupported file type</p>;
+        return <p className="text-sm text-text-muted">Unsupported file type</p>;
     }
   };
 

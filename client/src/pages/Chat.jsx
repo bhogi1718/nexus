@@ -101,33 +101,33 @@ export const Chat = () => {
 
   if (loading && conversations.length === 0) {
     return (
-      <div className="h-screen bg-gray-50 flex items-center justify-center">
+      <div className="h-screen bg-background flex items-center justify-center">
         <div className="text-center">
           <div className="mb-4">
-            <svg className="animate-spin h-12 w-12 text-blue-600 mx-auto" fill="none" viewBox="0 0 24 24">
+            <svg className="animate-spin h-12 w-12 text-accent mx-auto" fill="none" viewBox="0 0 24 24">
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
           </div>
-          <p className="text-gray-600">Loading chat...</p>
+          <p className="text-text-muted">Loading chat...</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-gray-50 flex flex-col overflow-hidden">
+    <div className="h-screen bg-background flex flex-col overflow-hidden">
       <InstallPrompt />
       {/* Header */}
-      <nav className="bg-white border-b border-gray-200 shadow-sm flex-shrink-0">
+      <nav className="bg-sidebar border-b border-border shadow-sm flex-shrink-0">
         <div className="max-w-7xl mx-auto px-4 py-2.5 sm:px-6 lg:py-4 flex justify-between items-center">
           <div className="flex items-center gap-2 flex-1">
-            <div className="inline-flex items-center justify-center w-8 sm:w-10 h-8 sm:h-10 bg-blue-600 rounded-lg flex-shrink-0">
+            <div className="inline-flex items-center justify-center w-8 sm:w-10 h-8 sm:h-10 bg-gradient-to-br from-accent to-accent-hover rounded-lg flex-shrink-0">
               <svg className="w-5 sm:w-6 h-5 sm:h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 12h.01M12 12h.01M16 12h.01M21 12c0 4.418-4.03 8-9 8a9.863 9.863 0 01-4.255-.949L3 20l1.395-3.72C3.512 15.042 3 13.574 3 12c0-4.418 4.03-8 9-8s9 3.582 9 8z" />
               </svg>
             </div>
-            <h1 className="text-lg sm:text-2xl font-bold text-gray-900">Nexus</h1>
+            <h1 className="text-lg sm:text-2xl font-bold text-text-primary">Nexus</h1>
           </div>
           <button
             onClick={logout}
@@ -185,7 +185,7 @@ export const Chat = () => {
               {activeTab === 'chats' && (
                 <div className="flex-1 overflow-y-auto flex flex-col">
                   <div className="p-3 space-y-2 flex-shrink-0">
-                    <input type="text" placeholder="Search..." value={searchQuery} onChange={handleSearch} className="w-full px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 text-sm" />
+                    <input type="text" placeholder="Search..." value={searchQuery} onChange={handleSearch} className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent bg-background text-text-primary placeholder:text-text-muted text-sm" />
                   </div>
                   {searchResults.length > 0 ? (
                     <div className="flex-1 overflow-y-auto">
@@ -233,7 +233,7 @@ export const Chat = () => {
         </div>
 
         {/* Unified Chat Area (Tablet/Desktop) */}
-        <div className="hidden md:flex md:flex-1 bg-white md:rounded-2xl shadow-lg md:shadow-sm md:border md:border-gray-100 flex-col min-h-0 overflow-hidden relative">
+        <div className="hidden md:flex md:flex-1 bg-sidebar md:rounded-2xl shadow-lg md:shadow-sm md:border md:border-border flex-col min-h-0 overflow-hidden relative">
           {selectedConversation ? (
             <ChatWindow
               variant="desktop"

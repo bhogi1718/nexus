@@ -91,20 +91,21 @@ const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, 
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={uploading}
-        className="p-2 hover:bg-gray-100 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+        className="p-2 hover:bg-card rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         title="Attach file"
+        aria-label="Attach file"
       >
-        <svg className="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7.172a4 4 0 11-5.656 0m3.828-1.414a6 6 0 11-8.485 0m2.828-2.828a8 8 0 1111.314 0" />
         </svg>
       </button>
 
       {uploading && (
-        <div className="absolute bottom-full mb-2 left-0 bg-white p-3 rounded-lg shadow-md border border-gray-200">
-          <p className="text-sm font-medium mb-2">Uploading... {uploadProgress}%</p>
-          <div className="w-48 h-2 bg-gray-200 rounded-full overflow-hidden">
+        <div className="absolute bottom-full mb-2 left-0 bg-card p-3 rounded-lg shadow-md border border-border">
+          <p className="text-sm font-medium mb-2 text-text-primary">Uploading... {uploadProgress}%</p>
+          <div className="w-48 h-2 bg-background rounded-full overflow-hidden">
             <div
-              className="h-full bg-blue-600 transition-all"
+              className="h-full bg-accent transition-all"
               style={{ width: `${uploadProgress}%` }}
             ></div>
           </div>
