@@ -49,21 +49,21 @@ export const MessageBubble = ({ message, isCurrentUser, displayName, user, onLon
           isPressed ? 'opacity-75' : 'opacity-100'
         } ${
           isCurrentUser
-            ? `bg-blue-600 text-white ${isLastInGroup ? 'rounded-br-none' : ''}`
-            : `bg-white text-gray-900 border border-gray-200 ${isLastInGroup ? 'rounded-bl-none' : ''}`
+            ? `bg-accent text-white ${isLastInGroup ? 'rounded-br-none' : ''}`
+            : `bg-card text-text-primary border border-border ${isLastInGroup ? 'rounded-bl-none' : ''}`
         }`}>
         {!isCurrentUser && isFirstInGroup && (
-          <p className="text-xs font-semibold text-gray-500 mb-0.5">{displayName}</p>
+          <p className="text-xs font-semibold text-text-muted mb-0.5">{displayName}</p>
         )}
         {message.fileUrl && <MediaMessage message={message} isCurrentUser={isCurrentUser} />}
         {!message.fileUrl && displayContent && <p className="break-words text-sm">{displayContent}</p>}
         {message.undecryptable && <p className="text-sm italic opacity-60">🔒 Encrypted</p>}
         <p className={`text-xs mt-1 md:mt-2 flex items-center gap-1 ${
-          isCurrentUser ? 'text-blue-100 justify-end' : 'text-gray-400'
+          isCurrentUser ? 'text-white/70 justify-end' : 'text-text-muted'
         }`}>
           {new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
           {isCurrentUser && (
-            <span className={message.isOptimistic ? 'text-blue-300' : isRead ? 'text-cyan-300' : 'text-blue-100'}>
+            <span className={message.isOptimistic ? 'text-white/50' : isRead ? 'text-white' : 'text-white/70'}>
               {message.isOptimistic ? (
                 <Clock className="w-3.5 h-3.5" />
               ) : (isRead || isDelivered) ? (

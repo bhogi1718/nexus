@@ -8,18 +8,18 @@ export const AddContactForm = ({ contactEmail, setContactEmail, addingContact, c
         placeholder="Add contact..."
         value={contactEmail}
         onChange={(e) => setContactEmail(e.target.value)}
-        className="flex-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 bg-gray-50 text-sm"
+        className="flex-1 px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent bg-background text-text-primary placeholder:text-text-muted text-sm"
       />
       <button
         type="submit"
         disabled={addingContact || !contactEmail.trim()}
-        className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white font-bold rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
+        className="px-3 py-2 bg-accent hover:bg-accent-hover disabled:bg-text-muted text-white font-bold rounded-lg transition-colors min-w-[40px] min-h-[40px] flex items-center justify-center"
       >
         +
       </button>
     </form>
     {contactMessage && (
-      <p className={`text-xs ${contactMessage.startsWith('✓') ? 'text-green-600' : 'text-red-600'}`}>
+      <p className={`text-xs ${contactMessage.startsWith('✓') ? 'text-accent' : 'text-red-600 dark:text-red-400'}`}>
         {contactMessage}
       </p>
     )}
