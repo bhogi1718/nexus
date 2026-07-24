@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Icon } from '../ui/Icon';
 import { ConversationListItem } from './ConversationListItem';
 import { SearchResultItem } from './SearchResultItem';
 import { AddContactForm } from './AddContactForm';
@@ -47,35 +48,33 @@ export const Sidebar = ({
   };
 
   return (
-    <div className="hidden md:flex md:w-72 lg:w-80 md:flex-col bg-sidebar md:rounded-2xl shadow-lg md:shadow-sm md:border md:border-border overflow-hidden flex-shrink-0">
+    <div className="hidden md:flex md:w-72 lg:w-80 md:flex-col bg-surface-container md:rounded-xl shadow-lg md:border md:border-outline-variant overflow-hidden flex-shrink-0">
       {/* Profile Section */}
-      <div className="p-4 border-b border-border bg-card">
+      <div className="p-4 border-b border-outline-variant">
         <div className="flex items-center gap-3">
-          <div className="w-12 h-12 bg-gradient-to-br from-accent to-accent-hover rounded-full flex items-center justify-center text-white text-lg font-bold flex-shrink-0">
-            {user?.name?.charAt(0).toUpperCase() || 'U'}
+          <div className="relative flex-shrink-0">
+            <div className="w-12 h-12 bg-primary-container rounded-full flex items-center justify-center text-on-primary-container text-lg font-bold ring-2 ring-primary">
+              {user?.name?.charAt(0).toUpperCase() || 'U'}
+            </div>
+            <div className="absolute bottom-0 right-0 w-3 h-3 bg-primary rounded-full border-2 border-surface-container" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="font-semibold text-text-primary text-sm truncate">{user?.name || 'User'}</p>
-            <p className="text-xs text-text-muted truncate">{user?.email || 'No email'}</p>
-            <p className="text-xs text-accent font-medium flex items-center gap-1 mt-0.5">
-              <span className="w-2 h-2 bg-accent rounded-full"></span> Online
-            </p>
+            <p className="font-headline-md text-headline-md font-bold text-primary truncate">{user?.name || 'User'}</p>
+            <p className="text-xs text-on-surface-variant truncate">{user?.email || 'No email'}</p>
           </div>
           <button
             onClick={handleOpenContacts}
-            className="p-2 rounded-lg text-accent hover:bg-accent/10 transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="p-2 rounded-full text-on-surface-variant hover:bg-surface-variant transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
             title="Contacts"
             aria-label="Open contacts"
           >
-            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 20h5v-2a3 3 0 00-5.856-1.487M15 10a3 3 0 11-6 0 3 3 0 016 0zm6 0a3 3 0 11-6 0 3 3 0 016 0z" />
-            </svg>
+            <Icon name="contacts" className="text-[22px]" />
           </button>
         </div>
       </div>
 
       {/* Add Contact + Search */}
-      <div className="p-3 border-b border-border space-y-2">
+      <div className="p-3 border-b border-outline-variant space-y-2">
         <AddContactForm
           contactEmail={contactEmail}
           setContactEmail={setContactEmail}
@@ -83,13 +82,16 @@ export const Sidebar = ({
           contactMessage={contactMessage}
           onSubmit={onAddContact}
         />
-        <input
-          type="text"
-          placeholder="Search..."
-          value={searchQuery}
-          onChange={onSearch}
-          className="w-full px-3 py-2 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent bg-background text-text-primary placeholder:text-text-muted text-sm"
-        />
+        <div className="relative">
+          <Icon name="search" className="absolute left-3 top-1/2 -translate-y-1/2 text-on-surface-variant text-[18px]" />
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={onSearch}
+            className="w-full pl-9 pr-3 py-2 border border-outline-variant rounded-lg focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary bg-surface-container-low text-on-surface placeholder:text-outline text-sm"
+          />
+        </div>
       </div>
 
       {/* Conversations/Search Results */}
@@ -103,7 +105,7 @@ export const Sidebar = ({
             />
           ))
         ) : conversations.length === 0 ? (
-          <div className="p-4 text-center text-text-muted text-sm">No conversations yet</div>
+          <div className="p-4 text-center text-on-surface-variant text-sm">No conversations yet</div>
         ) : (
           conversations.map(conversation => (
             <ConversationListItem
@@ -128,22 +130,22 @@ export const Sidebar = ({
           <>
             <button
               onClick={() => setPendingDelete(null)}
-              className="px-4 py-2 text-sm font-semibold text-text-secondary hover:bg-background rounded-lg transition-colors"
+              className="px-4 py-2 text-sm font-semibold text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors"
             >
               Cancel
             </button>
             <button
               onClick={confirmDelete}
-              className="px-4 py-2 text-sm font-semibold text-white bg-red-600 hover:bg-red-700 rounded-lg transition-colors"
+              className="px-4 py-2 text-sm font-semibold text-on-error bg-error rounded-lg hover:opacity-90 transition-opacity"
             >
               Delete
             </button>
           </>
         }
       >
-        <p className="text-sm text-text-secondary">
+        <p className="text-sm text-on-surface-variant">
           This will permanently delete your conversation with{' '}
-          <strong>{pendingDelete ? getConversationName(pendingDelete) : ''}</strong>. This action cannot be undone.
+          <strong className="text-on-surface">{pendingDelete ? getConversationName(pendingDelete) : ''}</strong>. This action cannot be undone.
         </p>
       </Modal>
 
@@ -153,7 +155,7 @@ export const Sidebar = ({
         title="Contacts"
       >
         <div className="-m-4">
-          <div className="p-3 border-b border-border">
+          <div className="p-3 border-b border-outline-variant">
             <AddContactForm
               contactEmail={contactEmail}
               setContactEmail={setContactEmail}

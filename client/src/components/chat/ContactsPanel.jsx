@@ -16,7 +16,7 @@ export const ContactsPanel = ({
 }) => {
   return (
     <div className="flex-1 overflow-y-auto flex flex-col">
-      <div className="p-3 border-b border-border flex-shrink-0">
+      <div className="p-3 border-b border-outline-variant flex-shrink-0">
         <AddContactForm
           contactEmail={contactEmail}
           setContactEmail={setContactEmail}
