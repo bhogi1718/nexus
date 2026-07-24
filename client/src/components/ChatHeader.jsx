@@ -1,6 +1,7 @@
 import React from 'react';
+import { X } from 'lucide-react';
 
-export const ChatHeader = ({ conversation, onBack, user }) => {
+export const ChatHeader = ({ conversation, onBack, onClose, user }) => {
   if (!conversation) return null;
 
   const otherUser = conversation.type === 'group'
@@ -32,6 +33,16 @@ export const ChatHeader = ({ conversation, onBack, user }) => {
           </h2>
           <p className="text-xs md:text-sm text-text-muted">{status}</p>
         </div>
+        {onClose && (
+          <button
+            onClick={onClose}
+            aria-label="Close conversation"
+            title="Close conversation"
+            className="hidden md:flex p-2 rounded-lg text-text-secondary hover:bg-card flex-shrink-0 min-w-[40px] min-h-[40px] items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        )}
       </div>
     </div>
   );

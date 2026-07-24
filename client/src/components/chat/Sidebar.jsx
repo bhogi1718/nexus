@@ -2,6 +2,8 @@ import React, { useState } from 'react';
 import { ConversationListItem } from './ConversationListItem';
 import { SearchResultItem } from './SearchResultItem';
 import { AddContactForm } from './AddContactForm';
+import { ContactListItem } from './ContactListItem';
+import { EmptyState } from '../EmptyState';
 import { Modal } from '../ui/Modal';
 
 export const Sidebar = ({
@@ -22,12 +24,26 @@ export const Sidebar = ({
   onDeleteConversation,
   getConversationName,
   isUnknownSender,
+  loadingContacts,
+  contacts,
+  onRemoveContact,
 }) => {
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [showContacts, setShowContacts] = useState(false);
 
   const confirmDelete = () => {
     if (pendingDelete) onDeleteConversation(pendingDelete._id);
     setPendingDelete(null);
+  };
+
+  const handleOpenContacts = async () => {
+    await onOpenProfile();
+    setShowContacts(true);
+  };
+
+  const handleMessageContact = (contactId) => {
+    setShowContacts(false);
+    onStartConversation(contactId);
   };
 
   return (
@@ -46,7 +62,7 @@ export const Sidebar = ({
             </p>
           </div>
           <button
-            onClick={onOpenProfile}
+            onClick={handleOpenContacts}
             className="p-2 rounded-lg text-accent hover:bg-accent/10 transition-colors flex-shrink-0 min-w-[40px] min-h-[40px] flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             title="Contacts"
             aria-label="Open contacts"
@@ -129,6 +145,38 @@ export const Sidebar = ({
           This will permanently delete your conversation with{' '}
           <strong>{pendingDelete ? getConversationName(pendingDelete) : ''}</strong>. This action cannot be undone.
         </p>
+      </Modal>
+
+      <Modal
+        isOpen={showContacts}
+        onClose={() => setShowContacts(false)}
+        title="Contacts"
+      >
+        <div className="-m-4">
+          <div className="p-3 border-b border-border">
+            <AddContactForm
+              contactEmail={contactEmail}
+              setContactEmail={setContactEmail}
+              addingContact={addingContact}
+              contactMessage={contactMessage}
+              onSubmit={onAddContact}
+            />
+          </div>
+          {loadingContacts ? (
+            <EmptyState type="noContacts" />
+          ) : !contacts || contacts.length === 0 ? (
+            <EmptyState type="noContacts" />
+          ) : (
+            contacts.map(contact => (
+              <ContactListItem
+                key={contact._id}
+                contact={contact}
+                onMessage={() => handleMessageContact(contact._id)}
+                onRemove={() => onRemoveContact(contact._id)}
+              />
+            ))
+          )}
+        </div>
       </Modal>
     </div>
   );
