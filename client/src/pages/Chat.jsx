@@ -157,6 +157,9 @@ export const Chat = () => {
           onStartConversation={startConversation}
           onDeleteConversation={handleDeleteConversation}
           getConversationName={getConversationName}
+          loadingContacts={loadingContacts}
+          contacts={contacts}
+          onRemoveContact={handleRemoveContact}
           isUnknownSender={isUnknownSender}
         />
 
@@ -238,6 +241,7 @@ export const Chat = () => {
             <ChatWindow
               variant="desktop"
               conversation={selectedConversationObj}
+              onBack={handleCloseChat}
               messages={messages}
               loadingMessages={loadingMessages}
               user={user}
