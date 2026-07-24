@@ -70,7 +70,12 @@ export const ChatWindow = ({
 
   return (
     <>
-      <ChatHeader conversation={conversation} onBack={isMobile ? onBack : undefined} user={user} />
+      <ChatHeader
+        conversation={conversation}
+        onBack={isMobile ? onBack : undefined}
+        onClose={!isMobile ? onBack : undefined}
+        user={user}
+      />
 
       <div className="relative flex-1 flex flex-col min-h-0">
         <div
