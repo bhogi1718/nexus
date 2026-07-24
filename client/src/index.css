@@ -2,33 +2,13 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
-  --color-background: #F8FAFC;
-  --color-sidebar: #F1F5F9;
-  --color-card: #E2E8F0;
-  --color-border: #CBD5E1;
-  --color-accent: #22C55E;
-  --color-accent-hover: #16A34A;
-  --color-text-primary: #1E293B;
-  --color-text-secondary: #475569;
-  --color-text-muted: #64748B;
-}
-
-:root.dark {
-  --color-background: #0F172A;
-  --color-sidebar: #111827;
-  --color-card: #1E293B;
-  --color-border: #334155;
-  --color-accent: #22C55E;
-  --color-accent-hover: #16A34A;
-  --color-text-primary: #F8FAFC;
-  --color-text-secondary: #CBD5E1;
-  --color-text-muted: #94A3B8;
-}
-
 @layer base {
+  .material-symbols-outlined {
+    font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+  }
+
   body {
-    @apply bg-background text-text-primary transition-colors duration-200;
+    @apply bg-background text-on-background font-body-lg;
   }
 
   input {
@@ -38,23 +18,37 @@
   button {
     @apply transition-all duration-200;
   }
+
+  ::-webkit-scrollbar {
+    width: 4px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: theme('colors.outline-variant');
+    border-radius: 10px;
+  }
 }
 
 @layer components {
+  .glass-panel {
+    background: rgba(14, 21, 14, 0.8);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid rgba(74, 225, 118, 0.2);
+  }
+
   .auth-card {
-    @apply bg-card rounded-2xl shadow-lg p-8 w-full max-w-md;
+    @apply glass-panel rounded-xl p-lg shadow-2xl w-full max-w-md;
   }
 
   .auth-input {
-    @apply w-full px-4 py-3 border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-accent focus:border-transparent bg-background text-text-primary placeholder:text-text-muted transition-colors;
+    @apply w-full bg-surface-container-high border border-outline-variant rounded-lg px-md py-3.5 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all text-on-surface placeholder:text-outline-variant;
   }
 
   .auth-button {
-    @apply w-full bg-accent hover:bg-accent-hover text-white font-semibold py-3 rounded-lg transition-colors disabled:bg-text-muted disabled:cursor-not-allowed;
-  }
-
-  .nav-bar {
-    @apply bg-white border-b border-gray-200 shadow-sm sticky top-0 z-50;
+    @apply w-full bg-primary-container hover:bg-primary-container/90 text-on-primary-container font-headline-md py-md rounded-lg transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-sm;
   }
 }
 
@@ -62,6 +56,11 @@
   @keyframes fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
+  }
+
+  @keyframes fade-in-up {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
   }
 
   @keyframes sheet-slide-up {
@@ -76,6 +75,10 @@
 
   .animate-fade-in {
     animation: fade-in 0.15s ease-out;
+  }
+
+  .animate-fade-in-up {
+    animation: fade-in-up 0.6s ease-out forwards;
   }
 
   .animate-sheet-slide-up {

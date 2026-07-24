@@ -1,25 +1,39 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { MessageCircle, AlertCircle, Loader2 } from 'lucide-react';
 import { generateKeypair, storeKeys } from '../services/cryptoService';
 import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
+import { Icon } from '../components/ui/Icon';
+
+const OTP_LENGTH = 6;
 
 export const Signup = () => {
-  const [step, setStep] = useState(1); // 1: email entry, 2: otp verification
-  const [formData, setFormData] = useState({
-    name: '',
-    email: '',
-    otp: ''
-  });
+  const [step, setStep] = useState(1); // 1: details entry, 2: otp verification
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [otpDigits, setOtpDigits] = useState(Array(OTP_LENGTH).fill(''));
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
   const { loginWithToken } = useAuth();
+  const otpInputRefs = useRef([]);
 
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+  const otp = otpDigits.join('');
+
+  const handleOtpChange = (index, value) => {
+    const digit = value.replace(/\D/g, '').slice(-1);
+    const next = [...otpDigits];
+    next[index] = digit;
+    setOtpDigits(next);
+    if (digit && index < OTP_LENGTH - 1) {
+      otpInputRefs.current[index + 1]?.focus();
+    }
+  };
+
+  const handleOtpKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !otpDigits[index] && index > 0) {
+      otpInputRefs.current[index - 1]?.focus();
+    }
   };
 
   const handleSendOTP = async (e) => {
@@ -28,8 +42,9 @@ export const Signup = () => {
     setLoading(true);
 
     try {
-      await api.post('/auth/send-otp', { email: formData.email });
+      await api.post('/auth/send-otp', { email });
       setStep(2);
+      setTimeout(() => otpInputRefs.current[0]?.focus(), 50);
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to send OTP');
     } finally {
@@ -45,9 +60,9 @@ export const Signup = () => {
     try {
       const { publicKey, secretKey } = generateKeypair();
       const response = await api.post('/auth/verify-otp-signup', {
-        name: formData.name,
-        email: formData.email,
-        otp: formData.otp,
+        name,
+        email,
+        otp,
         publicKey,
         secretKey
       });
@@ -64,144 +79,138 @@ export const Signup = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background flex items-center justify-center px-4">
+    <div className="min-h-screen bg-background flex items-center justify-center px-4 relative overflow-hidden">
+      <div className="fixed inset-0 -z-10">
+        <div className="absolute inset-0 opacity-20" style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, #334155 1px, transparent 0)', backgroundSize: '32px 32px' }} />
+        <div className="absolute top-[-10%] left-[-10%] w-[40%] h-[40%] bg-primary/10 blur-[120px] rounded-full" />
+        <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-primary/5 blur-[120px] rounded-full" />
+      </div>
+
       <div className="w-full max-w-md">
-        {/* Logo/Title */}
-        <div className="text-center mb-12">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-gradient-to-br from-accent to-accent-hover rounded-2xl mb-4">
-            <MessageCircle className="w-8 h-8 text-white" strokeWidth={2} />
+        <div className="flex flex-col items-center text-center mb-xl animate-fade-in-up">
+          <div className="w-16 h-16 bg-surface-container-highest rounded-xl flex items-center justify-center mb-md border border-outline-variant shadow-lg">
+            <Icon name="forum" filled className="text-primary text-4xl" />
           </div>
-          <h1 className="text-4xl font-bold text-text-primary mb-2">Nexus</h1>
-          <p className="text-text-muted">Create your account</p>
+          <h1 className="font-headline-lg text-headline-lg text-on-surface tracking-tight">Join Nexus</h1>
+          <p className="font-body-lg text-body-lg text-on-surface-variant">Create your account</p>
         </div>
 
-        {/* Card */}
         <div className="auth-card">
-          <h2 className="text-2xl font-bold text-text-primary mb-6 text-center">Join Nexus</h2>
-
           {error && (
-            <div className="mb-6 p-4 bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 rounded-lg flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 mt-0.5 flex-shrink-0" />
-              <span className="text-sm">{error}</span>
+            <div className="mb-lg p-md bg-error-container/20 border border-error/20 text-error rounded-lg flex items-start gap-sm">
+              <Icon name="error" className="text-[20px] mt-0.5 flex-shrink-0" />
+              <span className="font-body-sm text-body-sm">{error}</span>
             </div>
           )}
 
-          {/* Step 1: Email Entry */}
           {step === 1 && (
-            <form onSubmit={handleSendOTP} className="space-y-4">
-              <div>
-                <label className="block text-sm font-semibold text-text-secondary mb-2">Full Name</label>
-                <input
-                  type="text"
-                  name="name"
-                  value={formData.name}
-                  onChange={handleChange}
-                  className="auth-input"
-                  placeholder="John Doe"
-                  required
-                />
+            <form onSubmit={handleSendOTP} className="space-y-md">
+              <div className="group">
+                <label className="block font-label-caps text-label-caps text-on-surface-variant mb-xs ml-1">Full Name</label>
+                <div className="relative">
+                  <Icon name="person" className="absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] group-focus-within:text-primary transition-colors" />
+                  <input
+                    type="text"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="auth-input pl-12"
+                    placeholder="John Doe"
+                    required
+                  />
+                </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-text-secondary mb-2">Email Address</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="auth-input"
-                  placeholder="you@example.com"
-                  required
-                />
+              <div className="group">
+                <label className="block font-label-caps text-label-caps text-on-surface-variant mb-xs ml-1">Email Address</label>
+                <div className="relative">
+                  <Icon name="alternate_email" className="absolute left-md top-1/2 -translate-y-1/2 text-on-surface-variant text-[20px] group-focus-within:text-primary transition-colors" />
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    className="auth-input pl-12"
+                    placeholder="name@example.com"
+                    required
+                  />
+                </div>
               </div>
 
-              <button
-                type="submit"
-                disabled={loading}
-                className="auth-button mt-6"
-              >
+              <button type="submit" disabled={loading} className="auth-button mt-lg">
                 {loading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <Loader2 className="w-5 h-5 animate-spin" />
+                  <>
+                    <Icon name="progress_activity" className="animate-spin text-[20px]" />
                     Sending OTP...
-                  </span>
+                  </>
                 ) : (
-                  'Send OTP'
+                  <>
+                    Send OTP
+                    <Icon name="arrow_forward" className="text-[20px]" />
+                  </>
                 )}
               </button>
             </form>
           )}
 
-          {/* Step 2: OTP Verification */}
           {step === 2 && (
-            <form onSubmit={handleVerifyOTPAndSignup} className="space-y-4">
-              <div className="p-4 bg-accent/10 border border-accent/20 rounded-lg mb-4">
-                <p className="text-sm text-text-primary">Verification code sent to <strong>{formData.email}</strong></p>
-                <p className="text-xs text-text-muted mt-2">Check your inbox for the 6-digit code</p>
+            <form onSubmit={handleVerifyOTPAndSignup}>
+              <button
+                type="button"
+                onClick={() => { setStep(1); setError(''); }}
+                className="text-primary hover:text-primary/80 flex items-center gap-xs mb-sm font-label-caps text-label-caps transition-colors"
+              >
+                <Icon name="chevron_left" className="text-[16px]" />
+                Back
+              </button>
+              <div className="mb-lg">
+                <h2 className="font-headline-md text-headline-md mb-xs text-on-surface">Verification Code</h2>
+                <p className="font-body-sm text-body-sm text-on-surface-variant">
+                  A 6-digit code was sent to <strong>{email}</strong>
+                </p>
               </div>
 
-              <div>
-                <label className="block text-sm font-semibold text-text-secondary mb-2">Verification Code</label>
-                <input
-                  type="text"
-                  name="otp"
-                  value={formData.otp}
-                  onChange={handleChange}
-                  className="auth-input text-center text-2xl tracking-widest"
-                  placeholder="000000"
-                  maxLength="6"
-                  required
-                />
-                <p className="text-xs text-text-muted mt-1">6-digit code from email</p>
+              <div className="flex justify-between gap-sm mb-lg">
+                {otpDigits.map((digit, index) => (
+                  <input
+                    key={index}
+                    ref={(el) => (otpInputRefs.current[index] = el)}
+                    value={digit}
+                    onChange={(e) => handleOtpChange(index, e.target.value)}
+                    onKeyDown={(e) => handleOtpKeyDown(index, e)}
+                    maxLength={1}
+                    inputMode="numeric"
+                    className="otp-input w-12 h-14 text-center bg-surface-container-high border border-outline-variant rounded-lg text-primary font-headline-md focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary transition-all"
+                  />
+                ))}
               </div>
 
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setStep(1);
-                    setError('');
-                  }}
-                  className="flex-1 py-3 px-4 border-2 border-border text-text-secondary font-semibold rounded-lg hover:bg-background transition-colors"
-                >
-                  Back
-                </button>
-                <button
-                  type="submit"
-                  disabled={loading}
-                  className="flex-1 auth-button"
-                >
-                  {loading ? (
-                    <span className="flex items-center justify-center gap-2">
-                      <Loader2 className="w-5 h-5 animate-spin" />
-                      Creating...
-                    </span>
-                  ) : (
-                    'Create Account'
-                  )}
-                </button>
-              </div>
+              <button type="submit" disabled={loading || otp.length < OTP_LENGTH} className="auth-button">
+                {loading ? (
+                  <>
+                    <Icon name="progress_activity" className="animate-spin text-[20px]" />
+                    Creating account...
+                  </>
+                ) : (
+                  <>
+                    Create Account
+                    <Icon name="verified_user" className="text-[20px]" />
+                  </>
+                )}
+              </button>
             </form>
           )}
 
-          <div className="mt-6 relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="px-2 bg-card text-text-muted">Already have an account?</span>
-            </div>
+          <div className="mt-lg pt-lg border-t border-outline-variant/30 text-center">
+            <span className="text-on-surface-variant font-body-sm text-body-sm">Already have an account? </span>
+            <Link to="/login" className="font-bold text-primary hover:underline">Sign In</Link>
           </div>
-
-          <Link to="/login" className="block mt-6 w-full text-center px-4 py-3 border-2 border-accent text-accent font-semibold rounded-lg hover:bg-accent/10 transition-colors">
-            Sign In
-          </Link>
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-text-muted text-sm mt-8">
-          Secure messaging for everyone
-        </p>
+        <footer className="mt-xl text-center opacity-60">
+          <p className="font-body-sm text-body-sm flex items-center justify-center gap-xs text-on-surface-variant">
+            <Icon name="lock" filled className="text-[16px]" />
+            End-to-End Encrypted
+          </p>
+        </footer>
       </div>
     </div>
   );
