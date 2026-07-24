@@ -49,12 +49,12 @@ export const EmptyState = ({ type, onAction }) => {
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-4 py-12 text-center">
       <div className="text-5xl md:text-6xl mb-4">{config.icon}</div>
-      <h3 className="text-lg md:text-xl font-semibold text-gray-900 mb-2">{config.title}</h3>
-      <p className="text-sm md:text-base text-gray-500 max-w-sm mb-6">{config.description}</p>
+      <h3 className="text-lg md:text-xl font-semibold text-text-primary mb-2">{config.title}</h3>
+      <p className="text-sm md:text-base text-text-muted max-w-sm mb-6">{config.description}</p>
       {config.actionLabel && onAction && (
         <button
           onClick={onAction}
-          className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-lg transition-colors min-h-[40px]"
+          className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-accent hover:bg-accent-hover text-white font-semibold rounded-lg transition-colors min-h-[40px]"
         >
           {config.actionIcon}
           {config.actionLabel}
