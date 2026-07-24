@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Icon } from './ui/Icon';
 import { FilePreviewModal } from './FilePreviewModal';
 
 export const MediaMessage = ({ message, isCurrentUser }) => {
@@ -66,11 +67,11 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
             />
             <button
               onClick={downloadFile}
-              className={`p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isCurrentUser ? 'hover:bg-white/20' : 'hover:bg-card'}`}
+              className={`p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isCurrentUser ? 'hover:bg-black/10' : 'hover:bg-surface-container-high'}`}
               title="Download audio"
               aria-label="Download audio"
             >
-              ⬇
+              <Icon name="download" className="text-[18px]" />
             </button>
           </div>
         );
@@ -81,16 +82,14 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
           <div
             onClick={() => setShowPreview(true)}
             className={`flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors ${
-              isCurrentUser ? 'bg-white/15 hover:bg-white/25' : 'bg-background hover:bg-card'
+              isCurrentUser ? 'bg-black/10 hover:bg-black/20' : 'bg-background hover:bg-surface-container-high'
             }`}
           >
-            <svg className={`w-6 h-6 flex-shrink-0 ${isCurrentUser ? 'text-white' : 'text-text-secondary'}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z" />
-            </svg>
+            <Icon name="description" className={`text-[24px] flex-shrink-0 ${isCurrentUser ? 'text-on-primary-container' : 'text-on-surface-variant'}`} />
             <div className="flex-1 min-w-0">
               <p className="font-semibold text-sm truncate">{message.fileName}</p>
               {message.fileSize && (
-                <p className={`text-xs ${isCurrentUser ? 'text-white/70' : 'text-text-muted'}`}>
+                <p className={`text-xs ${isCurrentUser ? 'text-on-primary-container/70' : 'text-on-surface-variant'}`}>
                   {(message.fileSize / 1024 / 1024).toFixed(2)} MB
                 </p>
               )}
@@ -100,16 +99,16 @@ export const MediaMessage = ({ message, isCurrentUser }) => {
                 e.stopPropagation();
                 downloadFile();
               }}
-              className={`p-2 rounded transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${isCurrentUser ? 'hover:bg-white/20' : 'hover:bg-border'}`}
+              className={`p-2 rounded transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isCurrentUser ? 'hover:bg-black/10' : 'hover:bg-outline-variant'}`}
               title="Download file"
               aria-label="Download file"
             >
-              ⬇
+              <Icon name="download" className="text-[18px]" />
             </button>
           </div>
         );
       default:
-        return <p className="text-sm text-text-muted">Unsupported file type</p>;
+        return <p className="text-sm text-on-surface-variant">Unsupported file type</p>;
     }
   };
 

@@ -1,5 +1,6 @@
 import React, { useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import api from '../services/api';
+import { Icon } from './ui/Icon';
 
 const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, ref) => {
   const [uploading, setUploading] = useState(false);
@@ -91,21 +92,19 @@ const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, 
         type="button"
         onClick={() => fileInputRef.current?.click()}
         disabled={uploading}
-        className="p-2 hover:bg-card rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        className="p-2 hover:bg-surface-container-high rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
         title="Attach file"
         aria-label="Attach file"
       >
-        <svg className="w-5 h-5 text-text-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7.172a4 4 0 11-5.656 0m3.828-1.414a6 6 0 11-8.485 0m2.828-2.828a8 8 0 1111.314 0" />
-        </svg>
+        <Icon name="attach_file" className="text-on-surface-variant text-[20px]" />
       </button>
 
       {uploading && (
-        <div className="absolute bottom-full mb-2 left-0 bg-card p-3 rounded-lg shadow-md border border-border">
-          <p className="text-sm font-medium mb-2 text-text-primary">Uploading... {uploadProgress}%</p>
+        <div className="absolute bottom-full mb-2 left-0 bg-surface-container-high p-3 rounded-lg shadow-md border border-outline-variant">
+          <p className="text-sm font-medium mb-2 text-on-surface">Uploading... {uploadProgress}%</p>
           <div className="w-48 h-2 bg-background rounded-full overflow-hidden">
             <div
-              className="h-full bg-accent transition-all"
+              className="h-full bg-primary transition-all"
               style={{ width: `${uploadProgress}%` }}
             ></div>
           </div>

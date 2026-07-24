@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { ChevronDown } from 'lucide-react';
+import { Icon } from '../ui/Icon';
 import { ChatHeader } from '../ChatHeader';
 import { MessageBubble } from '../MessageBubble';
 import { TypingIndicator } from '../TypingIndicator';
@@ -88,10 +88,8 @@ export const ChatWindow = ({
           className={`flex-1 overflow-y-auto bg-background flex flex-col ${isMobile ? 'p-3 space-y-2.5' : 'p-3 md:p-6 space-y-2.5 md:space-y-4'}`}
         >
           {!isMobile && dragDrop?.isDragging && (
-            <div className="absolute inset-0 bg-accent/10 border-2 border-dashed border-accent rounded-2xl flex items-center justify-center z-40 pointer-events-none">
-              <svg className="w-16 h-16 text-accent mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" />
-              </svg>
+            <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-xl flex items-center justify-center z-40 pointer-events-none">
+              <Icon name="add" className="text-primary text-[64px] mx-auto mb-2" />
             </div>
           )}
 
@@ -135,9 +133,9 @@ export const ChatWindow = ({
         {showNewMessagesPill && (
           <button
             onClick={scrollToBottom}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 bg-accent text-white text-xs font-medium rounded-full shadow-lg hover:bg-accent-hover transition-colors animate-fade-in"
+            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 bg-primary-container text-on-primary-container text-xs font-medium rounded-full shadow-lg hover:bg-primary-container/90 transition-colors animate-fade-in"
           >
-            New messages <ChevronDown className="w-3.5 h-3.5" />
+            New messages <Icon name="expand_more" className="text-[16px]" />
           </button>
         )}
       </div>

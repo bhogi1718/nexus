@@ -6,9 +6,9 @@ const SIZE_CLASSES = {
 };
 
 const VARIANT_CLASSES = {
-  default: 'text-text-secondary hover:bg-card hover:text-text-primary',
-  accent: 'text-accent hover:bg-accent/10',
-  danger: 'text-red-500 hover:bg-red-500/10 hover:text-red-600',
+  default: 'text-on-surface-variant hover:bg-surface-container-high hover:text-on-surface',
+  accent: 'text-primary hover:bg-primary/10',
+  danger: 'text-error hover:bg-error/10 hover:text-error',
 };
 
 export const IconButton = ({
@@ -28,7 +28,7 @@ export const IconButton = ({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`flex items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:opacity-50 disabled:cursor-not-allowed ${SIZE_CLASSES[size]} ${VARIANT_CLASSES[variant]} ${className}`}
+      className={`flex items-center justify-center rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary disabled:opacity-50 disabled:cursor-not-allowed ${SIZE_CLASSES[size]} ${VARIANT_CLASSES[variant]} ${className}`}
     >
       {children}
     </button>
