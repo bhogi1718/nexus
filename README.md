@@ -1,13 +1,13 @@
 # Nexus - Real-time Messaging App
 
-A secure, real-time messaging application built with MERN stack and AWS services.
+A secure, real-time messaging application built with the MERN stack.
 
 ## Features
 
 - 🔐 **Secure Authentication** — OTP-based login with JWT tokens
 - 💬 **Real-time Messaging** — WebSocket-powered instant messaging via Socket.io
 - 👥 **Contact Management** — Add, block, and manage contacts
-- 📁 **File Sharing** — Upload files via AWS S3
+- 📁 **File Sharing** — Upload files via Cloudinary
 - 🌐 **Online Status** — Real-time presence detection
 - ✅ **Read Receipts** — Message delivery & read status
 - 📱 **Responsive Design** — Works on desktop and mobile
@@ -22,34 +22,31 @@ A secure, real-time messaging application built with MERN stack and AWS services
 
 **Backend:**
 - Node.js + Express
-- AWS DynamoDB (NoSQL database)
-- AWS S3 (file storage)
-- AWS SES (email service)
+- MongoDB + Mongoose
+- Cloudinary (file storage)
+- Nodemailer via Gmail (OTP emails)
 - Socket.io (real-time communication)
 - JWT (authentication)
-- bcryptjs (password hashing)
 
-**Infrastructure:**
-- AWS DynamoDB (serverless database)
-- AWS S3 (file storage)
-- AWS SES (email)
-- AWS EC2 (app hosting)
-- PM2 (process management)
+**Hosting:**
+- Vercel (frontend)
+- Render (backend API + WebSockets)
+- MongoDB Atlas (database)
 
 ## Getting Started
 
 ### Prerequisites
-- Node.js (v20+)
-- AWS Account (DynamoDB, S3, SES configured)
-- Git
-- AWS CLI configured with credentials
+- Node.js v20+
+- MongoDB (local `mongod`, or a free MongoDB Atlas cluster)
+- Cloudinary account (free tier is fine)
+- Gmail account with an App Password (only needed for production OTP emails)
 
 ### Installation
 
 1. Clone the repository:
 ```bash
 git clone <repo-url>
-cd messenger
+cd nexus
 ```
 
 2. Install dependencies:
@@ -64,17 +61,15 @@ cd client && npm install && cd ..
 cp server/.env.example server/.env
 ```
 
-4. Update `server/.env`:
+4. Fill in `server/.env` — see the comments in `.env.example` for each value. Minimum for local dev:
 ```env
-AWS_REGION=us-east-1
-AWS_S3_BUCKET=your-bucket-name
-DYNAMODB_USERS_TABLE=nexus-users
-DYNAMODB_MESSAGES_TABLE=nexus-messages
-DYNAMODB_CONVERSATIONS_TABLE=nexus-conversations
-DYNAMODB_OTPS_TABLE=nexus-otps
-JWT_SECRET=your-secret-key
-SES_FROM_EMAIL=noreply@yourdomain.com
+JWT_SECRET=<openssl rand -base64 32>
+MONGODB_URI=mongodb://localhost:27017/nexus
+CLOUDINARY_CLOUD_NAME=...
+CLOUDINARY_API_KEY=...
+CLOUDINARY_API_SECRET=...
 ```
+In development (`NODE_ENV` not `production`) the OTP is printed to the server console instead of being emailed, so Gmail credentials aren't required locally.
 
 ### Running Locally
 
@@ -83,87 +78,56 @@ SES_FROM_EMAIL=noreply@yourdomain.com
 npm run dev
 
 # Or run separately
-npm run dev:server  # Terminal 1
-npm run dev:client  # Terminal 2
+npm run dev:server  # Terminal 1  -> http://localhost:5000
+npm run dev:client  # Terminal 2  -> http://localhost:5173
 ```
-
-Access at: `http://localhost:5000` (server) or `http://localhost:5173` (client)
 
 ## Project Structure
 
 ```
-messenger/
-├── client/              # React frontend
+nexus/
+├── client/              # React frontend (deploys to Vercel)
 │   ├── src/
 │   │   ├── components/
 │   │   ├── pages/
 │   │   └── services/
+│   ├── vercel.json
 │   └── package.json
-├── server/              # Express backend
-│   ├── models/         # DynamoDB models
+├── server/              # Express backend (deploys to Render)
+│   ├── models/         # Mongoose models
 │   ├── routes/         # API routes
-│   ├── services/       # AWS services (DynamoDB, S3, SES)
-│   ├── middleware/     # Auth, validation, etc
+│   ├── services/       # db, cloudinaryStorage, emailOtpService, tokenService
+│   ├── middleware/     # Auth, upload, logging
 │   └── package.json
-├── scripts/            # Migration and utility scripts
-└── package.json        # Root dependencies
+├── render.yaml          # Render blueprint for the API service
+└── package.json         # Root dev scripts
 ```
 
-## Deployment to AWS EC2
+## Deployment
 
-### Prerequisites
-- AWS EC2 instance (Ubuntu 26.04)
-- Security group with ports 22, 80, 443, 5000 open
-- SSH key pair (.pem file)
+### 1. MongoDB Atlas
+Create a free cluster, add a database user, and allow access from anywhere (`0.0.0.0/0`) under Network Access (Render's outbound IPs are dynamic on the free plan). Copy the connection string as `MONGODB_URI`.
 
-### Step-by-step Deployment
+### 2. Cloudinary
+From the dashboard copy **Cloud name**, **API Key** and **API Secret**.
 
-```bash
-# 1. SSH to instance
-ssh -i your-key.pem ubuntu@your-ec2-ip
+### 3. Gmail App Password
+Enable 2-Step Verification on the Google account, then create an App Password at https://myaccount.google.com/apppasswords. Use the account email as `GMAIL_USER` and the 16-character password as `GMAIL_APP_PASSWORD`.
 
-# 2. Install Node.js
-curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
-sudo apt-get install -y nodejs
+### 4. Backend on Render
+- New → **Blueprint**, point it at this repo; it picks up `render.yaml`.
+  (Or New → Web Service manually: Root Directory `server`, Build `npm install`, Start `npm start`.)
+- Fill in the env vars marked `sync: false`: `MONGODB_URI`, `CLOUDINARY_*`, `GMAIL_*`.
+- Set `CLIENT_URL` and `CORS_ORIGINS` to your Vercel URL(s) once you have them, e.g.
+  `CORS_ORIGINS=https://nexus.vercel.app,https://nexus-git-main-you.vercel.app`.
+- Note the service URL, e.g. `https://nexus-api.onrender.com`.
 
-# 3. Clone repository
-git clone <your-repo-url>
-cd messenger
+### 5. Frontend on Vercel
+- Import the repo, set **Root Directory** to `client` (framework auto-detects as Vite).
+- Add environment variable `VITE_API_URL=https://<your-render-service>.onrender.com/api`.
+- Deploy. Then go back to Render and add the Vercel domain to `CORS_ORIGINS` if you haven't.
 
-# 4. Install dependencies
-npm install
-cd server && npm install && cd ..
-
-# 5. Configure environment
-nano server/.env
-# Add AWS credentials and table names
-
-# 6. Install PM2
-npm install -g pm2
-
-# 7. Start server
-pm2 start server/index.js --name "nexus-server"
-pm2 startup
-pm2 save
-
-# 8. Start client (optional, for static serving)
-cd client && npm run build && cd ..
-
-# 9. Access app
-# http://your-ec2-ip:5000
-```
-
-### Using PM2
-```bash
-# View logs
-pm2 logs nexus-server
-
-# Restart server
-pm2 restart nexus-server
-
-# Stop server
-pm2 stop nexus-server
-```
+Render's free tier spins the API down after inactivity; the first request after idle can take ~30–60s.
 
 ## License
 

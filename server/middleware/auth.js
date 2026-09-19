@@ -1,4 +1,4 @@
-import jwt from 'jsonwebtoken';
+import { verifyAccessToken } from '../services/tokenService.js';
 
 export const verifyToken = (req, res, next) => {
   try {
@@ -8,7 +8,7 @@ export const verifyToken = (req, res, next) => {
       return res.status(401).json({ message: 'Access token required' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyAccessToken(token);
     req.userId = decoded.userId;
     next();
   } catch (error) {

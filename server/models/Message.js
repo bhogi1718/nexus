@@ -1,171 +1,119 @@
+import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import db, { TABLES } from '../services/dynamodb.js';
+
+const messageSchema = new mongoose.Schema({
+  messageId: { type: String, default: uuidv4, unique: true, index: true },
+  conversationId: { type: String, required: true },
+  sender: { type: String, required: true },
+  type: { type: String, default: 'text' },
+  content: { type: String, default: null },
+  fileUrl: { type: String, default: null },
+  fileName: { type: String, default: null },
+  fileSize: { type: Number, default: null },
+  storageKey: { type: String, default: null },
+  readBy: { type: [{ _id: false, user: String, readAt: String }], default: [] },
+  deliveredTo: { type: [String], default: [] },
+  deletedFor: { type: [String], default: [] },
+  createdAt: { type: String, default: () => new Date().toISOString() },
+  updatedAt: { type: String, default: () => new Date().toISOString() }
+}, { versionKey: false });
+
+messageSchema.index({ conversationId: 1, createdAt: -1 });
+
+const MessageModel = mongoose.model('Message', messageSchema);
+
+const toPlain = (doc) => {
+  if (!doc) return null;
+  const obj = doc.toObject();
+  delete obj._id;
+  return obj;
+};
+
+// Accepts the legacy `s3Key` field name from older callers/clients.
+const normalizeInput = (data) => {
+  const { s3Key, ...rest } = data;
+  if (s3Key && !rest.storageKey) rest.storageKey = s3Key;
+  return rest;
+};
 
 export class Message {
   static async create(data) {
-    const message = {
-      messageId: data.messageId || uuidv4(),
-      conversationId: data.conversationId,
-      sender: data.sender,
-      type: data.type || 'text',
-      content: data.content || null,
-      fileUrl: data.fileUrl || null,
-      fileName: data.fileName || null,
-      fileSize: data.fileSize || null,
-      s3Key: data.s3Key || null,
-      readBy: data.readBy || [],
-      deliveredTo: data.deliveredTo || [],
-      deletedFor: data.deletedFor || [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    return await db.put(TABLES.MESSAGES, message);
+    return toPlain(await MessageModel.create(normalizeInput(data)));
   }
 
   static async findById(messageId) {
-    // messageId is not the primary key; scan for it
-    const messages = await db.scan(TABLES.MESSAGES, 'messageId = :mid', {}, { ':mid': messageId });
-    return messages[0] || null;
+    return toPlain(await MessageModel.findOne({ messageId }));
   }
 
-  static async findByConversation(conversationId, limit = 20, lastKey = null) {
-    // Query by primary key (conversationId, createdAt)
-    const result = await db.query(
-      TABLES.MESSAGES,
-      'conversationId = :cid',
-      {},
-      { ':cid': conversationId }
-    );
-
-    // Sort descending (newest first) and apply limit
-    return result
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
-      .slice(0, limit);
+  static async findByConversation(conversationId, limit = null) {
+    let query = MessageModel.find({ conversationId }).sort({ createdAt: -1 });
+    if (limit) query = query.limit(limit);
+    return (await query).map(toPlain);
   }
 
   static async countByConversationAndUser(conversationId, userId) {
-    const messages = await db.query(
-      TABLES.MESSAGES,
-      'conversationId = :cid',
-      {},
-      { ':cid': conversationId }
-    );
-
-    return messages.filter(m =>
-      m.sender !== userId &&
-      !m.deletedFor.includes(userId) &&
-      !m.readBy.some(r => r.user === userId)
-    ).length;
-  }
-
-  static async save(message) {
-    message.updatedAt = new Date().toISOString();
-    return await db.put(TABLES.MESSAGES, message);
+    return MessageModel.countDocuments({
+      conversationId,
+      sender: { $ne: userId },
+      deletedFor: { $ne: userId },
+      'readBy.user': { $ne: userId }
+    });
   }
 
   static async update(messageId, updates) {
-    const message = await this.findById(messageId);
-    if (!message) throw new Error('Message not found');
+    const doc = await MessageModel.findOneAndUpdate(
+      { messageId },
+      { $set: { ...normalizeInput(updates), updatedAt: new Date().toISOString() } },
+      { new: true }
+    );
+    if (!doc) throw new Error('Message not found');
+    return toPlain(doc);
+  }
 
-    const updated = { ...message, ...updates, updatedAt: new Date().toISOString() };
-    return await db.put(TABLES.MESSAGES, updated);
+  static async save(message) {
+    const { messageId, ...rest } = message;
+    return this.update(messageId, rest);
   }
 
   static async markAsRead(messageId, userId) {
-    const message = await this.findById(messageId);
-    if (!message) throw new Error('Message not found');
-
-    const alreadyRead = message.readBy.some(r => r.user === userId);
-    if (!alreadyRead) {
-      message.readBy.push({
-        user: userId,
-        readAt: new Date().toISOString()
-      });
-      await this.save(message);
-    }
-
-    return message;
+    const doc = await MessageModel.findOneAndUpdate(
+      { messageId, 'readBy.user': { $ne: userId } },
+      {
+        $push: { readBy: { user: userId, readAt: new Date().toISOString() } },
+        $set: { updatedAt: new Date().toISOString() }
+      },
+      { new: true }
+    );
+    return toPlain(doc) || this.findById(messageId);
   }
 
   static async deleteMany(filter) {
-    // Find messages matching filter and delete them
-    let messages = [];
-
-    if (filter.conversation) {
-      messages = await db.query(
-        TABLES.MESSAGES,
-        'conversationId = :cid',
-        {},
-        { ':cid': filter.conversation }
-      );
-    } else {
-      // Scan if no specific filter
-      messages = await db.scan(TABLES.MESSAGES);
-    }
-
-    // Delete each message using composite key
-    for (const msg of messages) {
-      await db.delete(TABLES.MESSAGES, { conversationId: msg.conversationId, createdAt: msg.createdAt });
-    }
-
-    return { deletedCount: messages.length };
+    const q = {};
+    if (filter.conversation) q.conversationId = filter.conversation;
+    if (filter.conversationId) q.conversationId = filter.conversationId;
+    if (filter.messageId) q.messageId = filter.messageId;
+    const result = await MessageModel.deleteMany(q);
+    return { deletedCount: result.deletedCount };
   }
 
   static async updateMany(filter, updates) {
-    // Find messages matching filter and update them
-    let messages = [];
-
-    if (filter.conversation) {
-      messages = await db.query(
-        TABLES.MESSAGES,
-        'conversationId = :cid',
-        {},
-        { ':cid': filter.conversation }
-      );
-    }
-
-    // Apply $addToSet or other operators
-    for (const msg of messages) {
-      if (updates.$addToSet && updates.$addToSet.deletedFor) {
-        if (!msg.deletedFor) msg.deletedFor = [];
-        if (!msg.deletedFor.includes(updates.$addToSet.deletedFor)) {
-          msg.deletedFor.push(updates.$addToSet.deletedFor);
-        }
-      }
-      await this.save(msg);
-    }
-
-    return { modifiedCount: messages.length };
+    const q = {};
+    if (filter.conversation) q.conversationId = filter.conversation;
+    if (filter.conversationId) q.conversationId = filter.conversationId;
+    const result = await MessageModel.updateMany(q, updates);
+    return { modifiedCount: result.modifiedCount };
   }
 
   static async countDocuments(filter) {
-    let messages = [];
-
-    if (filter.conversation) {
-      messages = await db.query(
-        TABLES.MESSAGES,
-        'conversationId = :cid',
-        {},
-        { ':cid': filter.conversation }
-      );
-    } else {
-      messages = await db.scan(TABLES.MESSAGES);
-    }
-
-    // Apply additional filters
-    return messages.filter(m => {
-      if (filter.sender && filter.sender.$ne && m.sender === filter.sender.$ne) return false;
-      if (filter['readBy.user'] && filter['readBy.user'].$ne) {
-        if (m.readBy.some(r => r.user === filter['readBy.user'].$ne)) return false;
-      }
-      if (filter.deletedFor && filter.deletedFor.$ne && m.deletedFor.includes(filter.deletedFor.$ne)) return false;
-      return true;
-    }).length;
+    const q = {};
+    if (filter.conversation) q.conversationId = filter.conversation;
+    if (filter.sender) q.sender = filter.sender;
+    if (filter['readBy.user']) q['readBy.user'] = filter['readBy.user'];
+    if (filter.deletedFor) q.deletedFor = filter.deletedFor;
+    return MessageModel.countDocuments(q);
   }
 
   static async populate(message, field) {
-    // Simple population for sender
     if (field === 'sender' && message.sender) {
       const User = (await import('./User.js')).default;
       const sender = await User.findById(message.sender);
