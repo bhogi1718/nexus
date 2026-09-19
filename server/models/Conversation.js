@@ -1,80 +1,80 @@
+import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import db, { TABLES } from '../services/dynamodb.js';
+
+const conversationSchema = new mongoose.Schema({
+  conversationId: { type: String, default: uuidv4, unique: true, index: true },
+  type: { type: String, enum: ['private', 'group'], default: 'private' },
+  name: { type: String, default: null },
+  avatar: { type: String, default: null },
+  participants: { type: [String], default: [], index: true },
+  admin: { type: String, default: null },
+  lastMessage: { type: String, default: null },
+  lastMessageAt: { type: String, default: () => new Date().toISOString() },
+  createdBy: { type: String, default: null },
+  deletedFor: { type: [String], default: [] },
+  createdAt: { type: String, default: () => new Date().toISOString() },
+  updatedAt: { type: String, default: () => new Date().toISOString() }
+}, { versionKey: false });
+
+const ConversationModel = mongoose.model('Conversation', conversationSchema);
+
+const toPlain = (doc) => {
+  if (!doc) return null;
+  const obj = doc.toObject();
+  delete obj._id;
+  return obj;
+};
 
 export class Conversation {
   static async create(data) {
-    const conversation = {
-      conversationId: data.conversationId || uuidv4(),
-      type: data.type || 'private',
-      name: data.name || null,
-      avatar: data.avatar || null,
-      participants: data.participants || [],
-      admin: data.admin || null,
-      lastMessage: data.lastMessage || null,
-      lastMessageAt: data.lastMessageAt || new Date().toISOString(),
-      createdBy: data.createdBy || null,
-      deletedFor: data.deletedFor || [],
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString()
-    };
-
-    return await db.put(TABLES.CONVERSATIONS, conversation);
+    return toPlain(await ConversationModel.create(data));
   }
 
   static async findById(conversationId) {
-    return await db.get(TABLES.CONVERSATIONS, { conversationId });
+    return toPlain(await ConversationModel.findOne({ conversationId }));
   }
 
   static async findOne(filter) {
-    // Find conversation where participants match
-    if (filter.type === 'private' && filter.participants && filter.participants.$all) {
-      const [user1, user2] = filter.participants.$all;
-      const conversations = await db.scan(TABLES.CONVERSATIONS);
-
-      return conversations.find(c =>
-        c.type === 'private' &&
-        c.participants.length === 2 &&
-        c.participants.includes(user1) &&
-        c.participants.includes(user2)
-      ) || null;
+    if (filter.type === 'private' && filter.participants?.$all) {
+      const doc = await ConversationModel.findOne({
+        type: 'private',
+        participants: { $all: filter.participants.$all, $size: 2 }
+      });
+      return toPlain(doc);
     }
-
-    return null;
+    return toPlain(await ConversationModel.findOne(filter));
   }
 
   static async find(filter) {
-    const conversations = await db.scan(TABLES.CONVERSATIONS);
-
-    return conversations.filter(c => {
-      if (filter.participants && !c.participants.includes(filter.participants)) return false;
-      if (filter.deletedFor && filter.deletedFor.$ne) {
-        if (c.deletedFor && c.deletedFor.includes(filter.deletedFor.$ne)) return false;
-      }
-      return true;
-    }).sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
-  }
-
-  static async findByIdAndUpdate(conversationId, updates) {
-    return await db.update(TABLES.CONVERSATIONS, { conversationId }, updates);
+    const docs = await ConversationModel.find(filter).sort({ lastMessageAt: -1 });
+    return docs.map(toPlain);
   }
 
   static async update(conversationId, updates) {
-    return await db.update(TABLES.CONVERSATIONS, { conversationId }, updates);
+    const doc = await ConversationModel.findOneAndUpdate(
+      { conversationId },
+      { $set: { ...updates, updatedAt: new Date().toISOString() } },
+      { new: true }
+    );
+    return toPlain(doc);
+  }
+
+  static async findByIdAndUpdate(conversationId, updates) {
+    return this.update(conversationId, updates);
   }
 
   static async save(conversation) {
-    conversation.updatedAt = new Date().toISOString();
-    return await db.put(TABLES.CONVERSATIONS, conversation);
+    const { conversationId, ...rest } = conversation;
+    return this.update(conversationId, rest);
   }
 
   static async findByIdAndDelete(conversationId) {
-    await db.delete(TABLES.CONVERSATIONS, { conversationId });
+    await ConversationModel.deleteOne({ conversationId });
     return true;
   }
 
   static async populate(conversation, fields) {
-    // Populate participants and lastMessage
-    if (fields && fields.includes('participants')) {
+    if (fields?.includes('participants')) {
       const User = (await import('./User.js')).default;
       const participants = await Promise.all(
         conversation.participants.map(async (id) => {
@@ -91,7 +91,7 @@ export class Conversation {
       conversation.participants = participants.filter(Boolean);
     }
 
-    if (fields && fields.includes('lastMessage') && conversation.lastMessage) {
+    if (fields?.includes('lastMessage') && conversation.lastMessage) {
       const Message = (await import('./Message.js')).default;
       conversation.lastMessage = await Message.findById(conversation.lastMessage);
     }

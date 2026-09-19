@@ -12,7 +12,6 @@ import express from 'express';
 import cors from 'cors';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
-import jwt from 'jsonwebtoken';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import csrf from 'csurf';
@@ -24,13 +23,20 @@ import Message from './models/Message.js';
 import Conversation from './models/Conversation.js';
 import { setIO } from './services/socketRegistry.js';
 import { sanitizeMessage } from './services/sanitizationService.js';
+import { verifyAccessToken } from './services/tokenService.js';
+import { connectDB, isDBConnected } from './services/db.js';
 import { requestLogger } from './middleware/logging.js';
 
-// Validate required environment variables.
-// AWS keys are NOT required: on EC2/Elastic Beanstalk the SDK uses the
-// instance role automatically; keys are only needed for local development.
 const isProduction = process.env.NODE_ENV === 'production';
-const requiredEnvVars = ['JWT_SECRET', 'AWS_S3_BUCKET', 'DYNAMODB_USERS_TABLE', 'DYNAMODB_MESSAGES_TABLE', 'DYNAMODB_CONVERSATIONS_TABLE', 'DYNAMODB_OTPS_TABLE'];
+const requiredEnvVars = [
+  'JWT_SECRET',
+  'MONGODB_URI',
+  'CLOUDINARY_CLOUD_NAME',
+  'CLOUDINARY_API_KEY',
+  'CLOUDINARY_API_SECRET'
+];
+// OTP emails are only sent in production; dev logs the code to the console.
+if (isProduction) requiredEnvVars.push('GMAIL_USER', 'GMAIL_APP_PASSWORD');
 
 const missingEnvVars = requiredEnvVars.filter(env => !process.env[env]);
 
@@ -38,10 +44,6 @@ if (missingEnvVars.length > 0) {
   console.error(`❌ Missing required environment variables: ${missingEnvVars.join(', ')}`);
   console.error(`📝 Copy .env.example to .env and fill in the values`);
   process.exit(1);
-}
-
-if (!process.env.AWS_ACCESS_KEY_ID) {
-  console.log('ℹ AWS keys not set — using instance role credentials (expected in production)');
 }
 
 const app = express();
@@ -132,13 +134,6 @@ app.use((req, res, next) => {
 
 app.use(express.json());
 
-// Serve the built React client (copied to server/public by deploy-prep).
-// In development this directory doesn't exist and this is a no-op.
-app.use(express.static(path.join(__dirname, 'public')));
-
-// Initialize database connection status
-let dbConnected = false;
-
 // Track online users
 const onlineUsers = new Set();
 
@@ -175,21 +170,21 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-// Database connection status check middleware
 app.use((req, res, next) => {
-  if (!dbConnected && req.path !== '/') {
+  if (!isDBConnected() && req.path !== '/' && req.path !== '/api/health') {
     return res.status(503).json({ message: 'Database connection unavailable' });
   }
   next();
 });
 
-// DynamoDB is configured via AWS SDK (no explicit connection needed)
-dbConnected = true;
-console.log('✅ DynamoDB tables configured and ready');
-
 // Routes
 app.get('/', (req, res) => {
   res.json({ message: 'Nexus API running' });
+});
+
+app.get('/api/health', (req, res) => {
+  const dbUp = isDBConnected();
+  res.status(dbUp ? 200 : 503).json({ status: dbUp ? 'ok' : 'degraded', db: dbUp ? 'connected' : 'disconnected' });
 });
 
 // Get online users
@@ -209,15 +204,8 @@ app.use('/api/', apiLimiter);
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
 
-// SPA fallback: deep links like /chat or /login must serve index.html
-// (API and socket paths fall through to their own handlers/404s)
-app.get('*', (req, res, next) => {
-  if (req.path.startsWith('/api') || req.path.startsWith('/socket.io')) {
-    return next();
-  }
-  res.sendFile(path.join(__dirname, 'public', 'index.html'), (err) => {
-    if (err) next(); // no build present (development) — fall through
-  });
+app.use((req, res) => {
+  res.status(404).json({ message: 'Not found' });
 });
 
 // Socket.io Middleware - Verify JWT
@@ -228,7 +216,7 @@ io.use((socket, next) => {
       return next(new Error('Authentication token required'));
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    const decoded = verifyAccessToken(token);
     socket.userId = decoded.userId;
     next();
   } catch (error) {
@@ -292,7 +280,8 @@ io.on('connection', (socket) => {
         return;
       }
 
-      const { conversationId, content, fileUrl, fileName, fileSize, type, s3Key } = data;
+      const { conversationId, content, fileUrl, fileName, fileSize, type } = data;
+      const storageKey = data.storageKey || data.s3Key;
 
       // Validate required fields
       if (!conversationId || !content) {
@@ -337,7 +326,7 @@ io.on('connection', (socket) => {
         type: type || 'text',
         content: sanitizedContent,
         deliveredTo,
-        ...(fileUrl && { fileUrl, fileName, fileSize, s3Key })
+        ...(fileUrl && { fileUrl, fileName, fileSize, storageKey })
       });
 
       // Get sender details for broadcast
@@ -375,7 +364,8 @@ io.on('connection', (socket) => {
         broadcastData.fileUrl = message.fileUrl;
         broadcastData.fileName = message.fileName;
         broadcastData.fileSize = message.fileSize;
-        broadcastData.s3Key = message.s3Key;
+        broadcastData.storageKey = message.storageKey;
+        broadcastData.s3Key = message.storageKey;
       }
 
       const room = io.sockets.adapter.rooms.get(`conversation:${conversationId}`);
@@ -444,14 +434,12 @@ io.on('connection', (socket) => {
       }
 
       const message = await Message.findById(messageId);
-      if (message) {
-        const alreadyRead = message.readBy.some(r => r.user === socket.userId);
-        if (!alreadyRead) {
-          await Message.update(messageId, {
-            readBy: [...message.readBy, { user: socket.userId, readAt: new Date().toISOString() }]
-          });
-        }
-      }
+      if (!message) return;
+
+      const conversation = await Conversation.findById(message.conversationId);
+      if (!conversation || !conversation.participants.includes(socket.userId)) return;
+
+      await Message.markAsRead(messageId, socket.userId);
     } catch (error) {
       console.error('Error marking message as read:', error);
     }
@@ -466,8 +454,15 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start Server
 const PORT = process.env.PORT || 5000;
-httpServer.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
-});
+
+connectDB()
+  .then(() => {
+    httpServer.listen(PORT, () => {
+      console.log(`Server running on port ${PORT}`);
+    });
+  })
+  .catch((err) => {
+    console.error('❌ Failed to connect to MongoDB:', err.message);
+    process.exit(1);
+  });

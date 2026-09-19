@@ -1,10 +1,9 @@
 import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
-import { uploadToS3, downloadFromS3, deleteFromS3, getS3Client, getBucketName } from '../services/s3Storage.js';
+import { uploadFile, downloadFile as downloadFromStorage, deleteFile, resourceTypeFor } from '../services/cloudinaryStorage.js';
 import { getIO } from '../services/socketRegistry.js';
 import { sanitizeMessage } from '../services/sanitizationService.js';
-import { GetObjectCommand } from '@aws-sdk/client-s3';
 
 // Format user for frontend (map userId to _id)
 const formatUser = (user) => user ? {
@@ -27,7 +26,8 @@ const formatMessage = (message) => message ? {
   fileUrl: message.fileUrl,
   fileName: message.fileName,
   fileSize: message.fileSize,
-  s3Key: message.s3Key,
+  storageKey: message.storageKey,
+  s3Key: message.storageKey,
   readBy: message.readBy,
   deliveredTo: message.deliveredTo,
   deletedFor: message.deletedFor,
@@ -341,14 +341,12 @@ export const markAsRead = async (req, res) => {
       return res.status(404).json({ message: 'Message not found' });
     }
 
-    const alreadyRead = message.readBy.some(r => r.user === req.userId);
-    if (!alreadyRead) {
-      await Message.update(messageId, {
-        readBy: [...message.readBy, { user: req.userId, readAt: new Date().toISOString() }]
-      });
+    const conversation = await Conversation.findById(message.conversationId);
+    if (!conversation || !conversation.participants.includes(req.userId)) {
+      return res.status(403).json({ message: 'Not authorized' });
     }
 
-    const updatedMessage = await Message.findById(messageId);
+    const updatedMessage = await Message.markAsRead(messageId, req.userId);
     const sender = await User.findById(updatedMessage.sender);
     res.status(200).json({ message: formatMessage({ ...updatedMessage, sender: formatUser(sender) }) });
   } catch (error) {
@@ -439,7 +437,6 @@ export const getContacts = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Get contact details from DynamoDB
     const contactIds = me.contacts || [];
     const contactUsers = await Promise.all(
       contactIds.map(async (contactId) => {
@@ -592,8 +589,7 @@ export const uploadMedia = async (req, res) => {
 
     console.log('Uploading file:', req.file.originalname, 'Size:', req.file.size, 'MIME:', req.file.mimetype);
 
-    // Upload to S3
-    const uploadResult = await uploadToS3(req.file.buffer, req.file.originalname, conversationId, req.file.mimetype);
+    const uploadResult = await uploadFile(req.file.buffer, req.file.originalname, conversationId, req.file.mimetype);
 
     console.log('Upload successful:', uploadResult.url);
 
@@ -601,6 +597,7 @@ export const uploadMedia = async (req, res) => {
       url: uploadResult.url,
       fileName: req.file.originalname,
       fileSize: uploadResult.size,
+      storageKey: uploadResult.key,
       s3Key: uploadResult.key
     });
   } catch (error) {
@@ -654,67 +651,24 @@ export const downloadFile = async (req, res) => {
       return res.status(403).json({ message: 'Not authorized to download this file' });
     }
 
-    console.log('✓ Authorization passed, downloading from S3');
-
-    // Get proper MIME type
     const mimeType = getMimeType(message.fileName);
 
     try {
-      if (!message.s3Key) {
-        return res.status(400).json({ message: 'File not available in S3' });
+      if (!message.storageKey) {
+        return res.status(400).json({ message: 'File not available in storage' });
       }
 
-      console.log('📥 Streaming file from S3:', message.s3Key);
+      const buffer = await downloadFromStorage(message.storageKey, resourceTypeFor(mimeType));
 
-      // Set headers BEFORE starting stream
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(message.fileName)}"`);
-      res.setHeader('Content-Type', mimeType);
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Pragma', 'no-cache');
-      res.setHeader('Expires', '0');
-
-      // Create S3 GetObject command
-      const command = new GetObjectCommand({
-        Bucket: getBucketName(),
-        Key: message.s3Key
-      });
-
-      // Get S3 client and send command to get stream
-      const s3Client = getS3Client();
-      const s3Response = await s3Client.send(command);
-
-      const expectedSize = s3Response.ContentLength;
-      console.log(`📥 S3 response received | Expected size: ${expectedSize} bytes | MIME: ${s3Response.ContentType}`);
-
-      // Read stream into buffer with verification
-      const chunks = [];
-      for await (const chunk of s3Response.Body) {
-        chunks.push(chunk);
-      }
-
-      const buffer = Buffer.concat(chunks);
-      const actualSize = buffer.length;
-
-      console.log(`✓ Buffer created | Actual size: ${actualSize} bytes | Matches: ${actualSize === expectedSize ? 'YES' : 'NO'}`);
-
-      // Verify buffer is not empty
-      if (actualSize === 0) {
+      if (buffer.length === 0) {
         return res.status(400).json({ message: 'File is empty' });
       }
 
-      // Verify buffer checksum
-      const firstBytes = buffer.slice(0, 10).toString('hex');
-      const lastBytes = buffer.slice(-10).toString('hex');
-      console.log(`📋 Buffer checksum | First 10 bytes: ${firstBytes} | Last 10 bytes: ${lastBytes}`);
-
-      // Send with explicit binary encoding
-      res.setHeader('Content-Length', actualSize);
-      console.log(`📤 Sending ${actualSize} bytes to client with Content-Length header`);
-
+      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(message.fileName)}"`);
+      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+      res.setHeader('Content-Length', buffer.length);
       res.type(mimeType);
       res.send(buffer);
-
-      console.log('✓ Buffer sent to client:', message.fileName);
     } catch (err) {
       console.error('❌ Failed to stream file:', err.message);
       if (!res.headersSent) {
@@ -769,20 +723,16 @@ export const deleteConversation = async (req, res) => {
     );
 
     if (allDeleted) {
-      // Clean up S3 files from media messages (best-effort)
-      const mediaMessages = messages.filter(m => m.s3Key);
+      const mediaMessages = messages.filter(m => m.storageKey);
       for (const msg of mediaMessages) {
         try {
-          await deleteFromS3(msg.s3Key);
-        } catch (s3Err) {
-          console.error('Failed to delete S3 file:', msg.s3Key, s3Err.message);
+          await deleteFile(msg.storageKey, resourceTypeFor(getMimeType(msg.fileName || '')));
+        } catch (storageErr) {
+          console.error('Failed to delete stored file:', msg.storageKey, storageErr.message);
         }
       }
 
-      // Delete all messages and conversation
-      for (const msg of messages) {
-        await Message.deleteMany({ messageId: msg.messageId });
-      }
+      await Message.deleteMany({ conversation: conversationId });
       await Conversation.findByIdAndDelete(conversationId);
     }
 

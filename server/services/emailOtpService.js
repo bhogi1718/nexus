@@ -1,21 +1,19 @@
-import { SESClient, SendEmailCommand } from '@aws-sdk/client-ses';
+import nodemailer from 'nodemailer';
 import OTP from '../models/OTP.js';
 
-let sesClient = null;
+let transporter = null;
 
-function getSESClient() {
-  if (!sesClient) {
-    const config = { region: process.env.AWS_REGION || 'us-east-1' };
-    // Explicit credentials only for local dev; production uses the instance role
-    if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-      config.credentials = {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY
-      };
-    }
-    sesClient = new SESClient(config);
+function getTransporter() {
+  if (!transporter) {
+    transporter = nodemailer.createTransport({
+      service: 'gmail',
+      auth: {
+        user: process.env.GMAIL_USER,
+        pass: process.env.GMAIL_APP_PASSWORD
+      }
+    });
   }
-  return sesClient;
+  return transporter;
 }
 
 /**
@@ -26,12 +24,6 @@ function generateOTP() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-/**
- * Send OTP via AWS SES
- * @param {string} email - Email address
- * @param {string} otp - OTP to send
- * @returns {Promise} SES response
- */
 export async function sendOTPViaEmail(email, otp) {
   try {
     const htmlContent = `
@@ -46,31 +38,17 @@ export async function sendOTPViaEmail(email, otp) {
       </div>
     `;
 
-    const params = {
-      Source: process.env.AWS_SES_EMAIL || 'noreply@nexus-messenger.com',
-      Destination: {
-        ToAddresses: [email]
-      },
-      Message: {
-        Subject: {
-          Data: 'Your Nexus Verification Code',
-          Charset: 'UTF-8'
-        },
-        Body: {
-          Html: {
-            Data: htmlContent,
-            Charset: 'UTF-8'
-          }
-        }
-      }
-    };
-
-    const command = new SendEmailCommand(params);
-    const response = await getSESClient().send(command);
-    console.log(`✓ OTP sent to ${email} | MessageId: ${response.MessageId}`);
-    return response;
+    const info = await getTransporter().sendMail({
+      from: `"Nexus" <${process.env.GMAIL_USER}>`,
+      to: email,
+      subject: 'Your Nexus Verification Code',
+      html: htmlContent,
+      text: `Your Nexus verification code is ${otp}. It expires in 5 minutes.`
+    });
+    console.log(`✓ OTP sent to ${email} | MessageId: ${info.messageId}`);
+    return info;
   } catch (error) {
-    console.error('❌ Failed to send OTP via SES:', error.message);
+    console.error('❌ Failed to send OTP email:', error.message);
     throw new Error(`Failed to send OTP: ${error.message}`);
   }
 }
@@ -96,7 +74,6 @@ export async function generateAndSaveOTP(email) {
 
     console.log(`📧 OTP generated for ${email}: ${otp}`);
 
-    // Try to send via SES, but don't fail if it doesn't work (dev mode)
     if (process.env.NODE_ENV === 'production') {
       await sendOTPViaEmail(email, otp);
     } else {

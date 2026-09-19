@@ -1,98 +1,97 @@
+import mongoose from 'mongoose';
 import { v4 as uuidv4 } from 'uuid';
-import db, { TABLES } from '../services/dynamodb.js';
+
+const userSchema = new mongoose.Schema({
+  userId: { type: String, default: uuidv4, unique: true, index: true },
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  name: { type: String, required: true },
+  password: { type: String, default: null },
+  isEmailVerified: { type: Boolean, default: false },
+  avatar: { type: String, default: null },
+  status: { type: String, default: "Hey there! I'm using Nexus" },
+  publicKey: { type: String, default: null },
+  secretKey: { type: String, default: null },
+  contacts: { type: [String], default: [] },
+  contactNicknames: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+  blockedUsers: { type: [String], default: [] },
+  isOnline: { type: Boolean, default: false },
+  lastSeen: { type: String, default: () => new Date().toISOString() },
+  accountLockoutUntil: { type: String, default: null },
+  failedOtpAttempts: { type: Number, default: 0 },
+  createdAt: { type: String, default: () => new Date().toISOString() }
+}, { versionKey: false });
+
+const UserModel = mongoose.model('User', userSchema);
+
+const toPlain = (doc) => {
+  if (!doc) return null;
+  const obj = doc.toObject();
+  delete obj._id;
+  return obj;
+};
 
 export class User {
   static async create(data) {
-    const user = {
-      userId: data.userId || uuidv4(),
-      email: data.email,
-      name: data.name,
-      password: data.password || null,
-      isEmailVerified: data.isEmailVerified || false,
-      avatar: data.avatar || null,
-      status: data.status || "Hey there! I'm using Nexus",
-      publicKey: data.publicKey || null,
-      secretKey: data.secretKey || null,
-      contacts: data.contacts || [],
-      contactNicknames: data.contactNicknames || {},
-      blockedUsers: data.blockedUsers || [],
-      isOnline: data.isOnline || false,
-      lastSeen: new Date().toISOString(),
-      accountLockoutUntil: null,
-      failedOtpAttempts: 0,
-      createdAt: new Date().toISOString()
-    };
-
-    return await db.put(TABLES.USERS, user);
+    const doc = await UserModel.create({
+      ...data,
+      email: data.email.toLowerCase()
+    });
+    return toPlain(doc);
   }
 
   static async findById(userId) {
-    return await db.get(TABLES.USERS, { userId });
+    return toPlain(await UserModel.findOne({ userId }));
   }
 
   static async findByEmail(email) {
-    const users = await db.query(
-      TABLES.USERS,
-      'email = :email',
-      {},
-      { ':email': email },
-      'email-index' // GSI on email
-    );
-    return users[0] || null;
+    if (!email) return null;
+    return toPlain(await UserModel.findOne({ email: email.toLowerCase() }));
   }
 
   static async findByIdWithSecretKey(userId) {
-    // In DynamoDB, all attributes are returned by default
-    return await db.get(TABLES.USERS, { userId });
+    return this.findById(userId);
   }
 
   static async update(userId, updates) {
-    return await db.update(TABLES.USERS, { userId }, updates);
+    const doc = await UserModel.findOneAndUpdate(
+      { userId },
+      { $set: updates },
+      { new: true }
+    );
+    return toPlain(doc);
   }
 
   static async findByIdAndUpdate(userId, updates) {
-    return await this.update(userId, updates);
+    return this.update(userId, updates);
   }
 
   static async addContact(userId, contactId) {
-    const user = await this.findById(userId);
-    if (!user) throw new Error('User not found');
-
-    if (!user.contacts.includes(contactId)) {
-      user.contacts.push(contactId);
-      await db.update(TABLES.USERS, { userId }, { contacts: user.contacts });
-    }
-
-    return user;
+    const doc = await UserModel.findOneAndUpdate(
+      { userId },
+      { $addToSet: { contacts: contactId } },
+      { new: true }
+    );
+    if (!doc) throw new Error('User not found');
+    return toPlain(doc);
   }
 
   static async removeContact(userId, contactId) {
-    const user = await this.findById(userId);
-    if (!user) throw new Error('User not found');
-
-    user.contacts = user.contacts.filter(id => id !== contactId);
-    await db.update(TABLES.USERS, { userId }, { contacts: user.contacts });
-
-    return user;
+    const doc = await UserModel.findOneAndUpdate(
+      { userId },
+      { $pull: { contacts: contactId } },
+      { new: true }
+    );
+    if (!doc) throw new Error('User not found');
+    return toPlain(doc);
   }
 
   static async setContactNickname(userId, contactId, nickname) {
-    const user = await this.findById(userId);
-    if (!user) throw new Error('User not found');
-
-    if (!user.contactNicknames) {
-      user.contactNicknames = {};
-    }
-
-    if (nickname) {
-      user.contactNicknames[contactId] = nickname;
-    } else {
-      delete user.contactNicknames[contactId];
-    }
-
-    await db.update(TABLES.USERS, { userId }, { contactNicknames: user.contactNicknames });
-
-    return user;
+    const op = nickname
+      ? { $set: { [`contactNicknames.${contactId}`]: nickname } }
+      : { $unset: { [`contactNicknames.${contactId}`]: '' } };
+    const doc = await UserModel.findOneAndUpdate({ userId }, op, { new: true });
+    if (!doc) throw new Error('User not found');
+    return toPlain(doc);
   }
 }
 
