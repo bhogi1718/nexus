@@ -72,9 +72,8 @@ export async function generateAndSaveOTP(email) {
       expiresAt
     });
 
-    console.log(`📧 OTP generated for ${email}: ${otp}`);
-
     if (process.env.NODE_ENV === 'production') {
+      console.log(`📧 OTP generated for ${email}`);
       await sendOTPViaEmail(email, otp);
     } else {
       // Development: log the OTP to console instead of sending

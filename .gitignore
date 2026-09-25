@@ -30,3 +30,6 @@ server/public/
 # Logs
 logs/
 *.log
+
+# Python venv (stray)
+.venv/

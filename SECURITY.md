@@ -64,16 +64,6 @@ methods: ['GET', 'POST']
 
 ---
 
-### 6. **Project Settings (`.claude/settings.json`)**
-Development workflow protection:
-- ✅ Allow: npm, node, git, ls, cd, read, edit (controlled)
-- ✅ Deny: rm -rf, sudo, destructive commands
-- ✅ Deny: Direct `.env` file editing
-
-**Purpose:** Prevents accidental dangerous commands during development
-
----
-
 ## 📋 Security Checklist
 
 - [x] Helmet.js security headers enabled
@@ -87,7 +77,6 @@ Development workflow protection:
 - [x] Environment variables not in code
 - [x] `.env` in `.gitignore`
 - [x] Required env vars validated at startup
-- [x] Claude Code settings restrict dangerous commands
 
 ---
 
