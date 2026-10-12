@@ -2,25 +2,31 @@ import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
 import { uploadFile, downloadFile as downloadFromStorage, deleteFile, resourceTypeFor } from '../services/cloudinaryStorage.js';
-import { getIO } from '../services/socketRegistry.js';
 import { sanitizeMessage } from '../services/sanitizationService.js';
+import { visiblePresence, visibleReadBy } from '../services/privacy.js';
+import { notifyRead, readConversation } from '../services/receipts.js';
+import { emitToUser } from '../services/socketRegistry.js';
 
-// Format user for frontend (map userId to _id)
-const formatUser = (user) => user ? {
+// --- formatting --------------------------------------------------------------
+
+// What the client gets about another user, with presence filtered through both
+// users' privacy settings.
+const formatUser = (user, viewer) => user ? {
   _id: user.userId,
   name: user.name,
   email: user.email,
   avatar: user.avatar,
   status: user.status,
-  isOnline: user.isOnline,
-  publicKey: user.publicKey
+  publicKey: user.publicKey,
+  ...visiblePresence(user, viewer),
 } : null;
 
-// Format message for frontend (map messageId to _id, conversationId to conversation)
-const formatMessage = (message) => message ? {
+const formatSender = (user) => user ? { _id: user.userId, name: user.name, avatar: user.avatar } : null;
+
+const formatMessage = (message, viewerId, usersById) => message ? {
   _id: message.messageId,
   conversation: message.conversationId,
-  sender: message.sender,
+  sender: formatSender(usersById.get(message.sender)) || { _id: message.sender },
   type: message.type,
   content: message.content,
   fileUrl: message.fileUrl,
@@ -28,376 +34,371 @@ const formatMessage = (message) => message ? {
   fileSize: message.fileSize,
   storageKey: message.storageKey,
   s3Key: message.storageKey,
-  readBy: message.readBy,
-  deliveredTo: message.deliveredTo,
-  deletedFor: message.deletedFor,
+  readBy: visibleReadBy(message.readBy, viewerId, usersById),
+  deliveredTo: message.deliveredTo || [],
   createdAt: message.createdAt,
-  updatedAt: message.updatedAt
+  updatedAt: message.updatedAt,
 } : null;
 
-// Format conversation for frontend (map conversationId to _id)
-const formatConversation = (conversation) => conversation ? {
+const formatConversation = (conversation, viewerId, usersById, lastMessage) => ({
   _id: conversation.conversationId,
   type: conversation.type,
   name: conversation.name,
   avatar: conversation.avatar,
-  participants: conversation.participants,
+  participants: conversation.participants
+    .map(id => formatUser(usersById.get(id), usersById.get(viewerId)))
+    .filter(Boolean),
   admin: conversation.admin,
-  lastMessage: conversation.lastMessage,
+  lastMessage: lastMessage && !(lastMessage.deletedFor || []).includes(viewerId)
+    ? formatMessage(lastMessage, viewerId, usersById)
+    : null,
   lastMessageAt: conversation.lastMessageAt,
   createdBy: conversation.createdBy,
   createdAt: conversation.createdAt,
-  deletedFor: conversation.deletedFor
-} : null;
+});
 
-// Create or get private conversation
+const isParticipant = (conversation, userId) =>
+  Boolean(conversation?.participants?.includes(userId));
+
+/** One conversation, fully populated for `viewerId`. */
+const loadConversationView = async (conversation, viewerId) => {
+  const lastMessages = await Message.findManyByIds([conversation.lastMessage]);
+  const lastMessage = lastMessages.get(conversation.lastMessage);
+  const usersById = await User.findManyByIds([...conversation.participants, lastMessage?.sender]);
+  return formatConversation(conversation, viewerId, usersById, lastMessage);
+};
+
+const sendError = (res, error, label) => {
+  console.error(`${label}:`, error);
+  res.status(500).json({ message: 'Server error' });
+};
+
+// --- conversations -----------------------------------------------------------
+
 export const getOrCreateConversation = async (req, res) => {
   try {
     const { userId } = req.body;
     const currentUserId = req.userId;
 
-    if (!userId) {
+    if (typeof userId !== 'string' || !userId) {
       return res.status(400).json({ message: 'User ID is required' });
     }
-
     if (currentUserId === userId) {
       return res.status(400).json({ message: 'Cannot create conversation with yourself' });
     }
 
-    // Verify target user exists
     const targetUser = await User.findById(userId);
     if (!targetUser) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Find existing private conversation
     let conversation = await Conversation.findOne({
       type: 'private',
-      participants: { $all: [currentUserId, userId] }
+      participants: { $all: [currentUserId, userId] },
     });
 
     if (!conversation) {
-      // New conversations can only be started with someone in your contacts
+      // New conversations can only be started with someone in your contacts.
       const me = await User.findById(currentUserId);
-      const isContact = (me.contacts || []).includes(userId);
-      if (!isContact) {
+      if (!(me.contacts || []).includes(userId)) {
         return res.status(403).json({ message: 'Add this user to your contacts first' });
       }
-
       conversation = await Conversation.create({
         type: 'private',
         participants: [currentUserId, userId],
-        createdBy: currentUserId
+        createdBy: currentUserId,
       });
-    } else if (conversation.deletedFor && conversation.deletedFor.includes(currentUserId)) {
-      // If conversation was deleted by current user, restore it
-      await Conversation.update(conversation.conversationId, {
-        deletedFor: conversation.deletedFor.filter(id => id !== currentUserId)
+    } else if ((conversation.deletedFor || []).includes(currentUserId)) {
+      conversation = await Conversation.update(conversation.conversationId, {
+        deletedFor: conversation.deletedFor.filter(id => id !== currentUserId),
       });
-      conversation = await Conversation.findById(conversation.conversationId);
     }
 
-    // Populate participants with user details
-    const participants = await Promise.all(
-      conversation.participants.map(async (pId) => {
-        const user = await User.findById(pId);
-        return formatUser(user);
-      })
-    );
-
-    // Populate lastMessage
-    let lastMessage = null;
-    if (conversation.lastMessage) {
-      const msg = await Message.findById(conversation.lastMessage);
-      if (msg) {
-        // Populate sender in message
-        const sender = await User.findById(msg.sender);
-        lastMessage = formatMessage({ ...msg, sender: formatUser(sender) });
-      }
-    }
-
-    res.status(200).json({
-      conversation: formatConversation({
-        ...conversation,
-        participants,
-        lastMessage
-      })
-    });
+    res.status(200).json({ conversation: await loadConversationView(conversation, currentUserId) });
   } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Get or create conversation error');
   }
 };
 
-// Get all conversations for current user
 export const getConversations = async (req, res) => {
   try {
+    const viewerId = req.userId;
     const conversations = await Conversation.find({
-      participants: req.userId
+      participants: viewerId,
+      deletedFor: { $ne: viewerId },
     });
 
-    // Filter out deleted conversations and sort
-    const filtered = conversations
-      .filter(c => !c.deletedFor || !c.deletedFor.includes(req.userId))
-      .sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
-
-    // Add unread counts and populate data
-    const result = await Promise.all(
-      filtered.map(async (conv) => {
-        const messages = await Message.findByConversation(conv.conversationId);
-        const unreadCount = messages.filter(m =>
-          m.sender !== req.userId &&
-          !m.deletedFor.includes(req.userId) &&
-          !m.readBy.some(r => r.user === req.userId)
-        ).length;
-
-        // Populate participants
-        const participants = await Promise.all(
-          conv.participants.map(async (pId) => {
-            const user = await User.findById(pId);
-            return formatUser(user);
-          })
-        );
-
-        // Populate lastMessage
-        let lastMessage = null;
-        if (conv.lastMessage) {
-          const msg = await Message.findById(conv.lastMessage);
-          if (msg) {
-            const sender = await User.findById(msg.sender);
-            lastMessage = formatMessage({ ...msg, sender: formatUser(sender) });
-          }
-        }
-
-        return {
-          ...formatConversation(conv),
-          participants,
-          lastMessage,
-          unreadCount
-        };
-      })
+    // Three batched queries instead of several per conversation.
+    const lastMessages = await Message.findManyByIds(conversations.map(c => c.lastMessage));
+    const userIds = new Set();
+    conversations.forEach(c => c.participants.forEach(p => userIds.add(p)));
+    lastMessages.forEach(m => userIds.add(m.sender));
+    const usersById = await User.findManyByIds([...userIds]);
+    const unreadCounts = await Promise.all(
+      conversations.map(c => Message.countByConversationAndUser(c.conversationId, viewerId))
     );
+
+    const result = conversations.map((c, i) => ({
+      ...formatConversation(c, viewerId, usersById, lastMessages.get(c.lastMessage)),
+      unreadCount: unreadCounts[i],
+    }));
 
     res.status(200).json({ conversations: result });
   } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Get conversations error');
   }
 };
 
-// Mark all messages in a conversation as read for the current user
+export const getConversationDetails = async (req, res) => {
+  try {
+    const conversation = await Conversation.findById(req.params.conversationId);
+    if (!conversation || !isParticipant(conversation, req.userId)) {
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+    res.status(200).json({ conversation: await loadConversationView(conversation, req.userId) });
+  } catch (error) {
+    sendError(res, error, 'Get conversation details error');
+  }
+};
+
 export const markConversationRead = async (req, res) => {
   try {
     const { conversationId } = req.params;
-
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
+    if (!conversation || !isParticipant(conversation, req.userId)) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
-
-    if (!conversation.participants.includes(req.userId)) {
-      return res.status(403).json({ message: 'Not authorized' });
-    }
-
-    // Get all messages and mark unread ones as read
-    const messages = await Message.findByConversation(conversationId);
-    for (const message of messages) {
-      if (message.sender !== req.userId && !message.readBy.some(r => r.user === req.userId)) {
-        await Message.update(message.messageId, {
-          readBy: [...message.readBy, { user: req.userId, readAt: new Date().toISOString() }]
-        });
-      }
-    }
-
-    // Tell the other participants their messages were read
-    const io = getIO();
-    if (io) {
-      const payload = { conversationId, readerId: req.userId };
-      io.to(`conversation:${conversationId}`).emit('messages:read', payload);
-      conversation.participants.forEach(p => {
-        if (p !== req.userId) {
-          io.to(`user:${p}`).emit('messages:read', payload);
-        }
-      });
-    }
-
-    res.status(200).json({ message: 'Conversation marked as read' });
+    const updated = await readConversation(conversationId, req.userId);
+    res.status(200).json({ message: 'Conversation marked as read', updated });
   } catch (error) {
-    console.error('Mark conversation read error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Mark conversation read error');
   }
 };
 
-// Get messages for a conversation
+export const deleteConversation = async (req, res) => {
+  try {
+    const { conversationId } = req.params;
+    const userId = req.userId;
+
+    const conversation = await Conversation.findById(conversationId);
+    if (!conversation || !isParticipant(conversation, userId)) {
+      return res.status(404).json({ message: 'Conversation not found' });
+    }
+
+    const deletedFor = [...new Set([...(conversation.deletedFor || []), userId])];
+    await Conversation.update(conversationId, { deletedFor });
+    await Message.updateMany({ conversation: conversationId }, { $addToSet: { deletedFor: userId } });
+
+    // Once every participant has deleted it, nobody can see it: remove it entirely.
+    if (conversation.participants.every(p => deletedFor.includes(p))) {
+      const messages = await Message.findByConversation(conversationId);
+      for (const msg of messages.filter(m => m.storageKey)) {
+        try {
+          await deleteFile(msg.storageKey, resourceTypeFor(getMimeType(msg.fileName || '')));
+        } catch (storageErr) {
+          console.error('Failed to delete stored file:', msg.storageKey, storageErr.message);
+        }
+      }
+      await Message.deleteMany({ conversation: conversationId });
+      await Conversation.findByIdAndDelete(conversationId);
+    }
+
+    res.status(200).json({ message: 'Conversation deleted for you' });
+  } catch (error) {
+    sendError(res, error, 'Delete conversation error');
+  }
+};
+
+// --- messages ----------------------------------------------------------------
+
+const MAX_PAGE = 200;
+
 export const getMessages = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    let { page = 1, limit = 20 } = req.query;
+    const viewerId = req.userId;
 
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
+    if (!conversation || !isParticipant(conversation, viewerId)
+      || (conversation.deletedFor || []).includes(viewerId)) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    // Check if conversation is deleted for current user
-    if (conversation.deletedFor && conversation.deletedFor.includes(req.userId)) {
-      return res.status(404).json({ message: 'Conversation not found' });
-    }
+    const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), MAX_PAGE);
+    const before = typeof req.query.before === 'string' ? req.query.before : null;
 
-    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
-      return res.status(403).json({ message: 'Not authorized to view this conversation' });
-    }
-
-    // Validate and constrain pagination
-    page = Math.max(1, parseInt(page) || 1);
-    limit = Math.min(Math.max(1, parseInt(limit) || 20), 100);
-
-    const allMessages = await Message.findByConversation(conversationId);
-
-    // Filter out deleted messages and apply pagination
-    const filtered = allMessages
-      .filter(m => !m.deletedFor || !m.deletedFor.includes(req.userId))
-      .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt)); // Ascending for display
-
-    const start = (page - 1) * limit;
-    const pageMessages = filtered.slice(start, start + limit);
-
-    // Populate senders
-    const messages = await Promise.all(
-      pageMessages.map(async (msg) => {
-        const sender = await User.findById(msg.sender);
-        return formatMessage({ ...msg, sender: formatUser(sender) });
-      })
-    );
+    // Newest messages first from the database, returned oldest-first for display.
+    const { messages, hasMore } = await Message.findRecent(conversationId, viewerId, limit, before);
+    const usersById = await User.findManyByIds(conversation.participants);
 
     res.status(200).json({
-      messages,
-      totalMessages: filtered.length,
-      page: parseInt(page),
-      pages: Math.ceil(filtered.length / limit)
+      messages: messages.map(m => formatMessage(m, viewerId, usersById)),
+      hasMore,
     });
   } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Get messages error');
   }
 };
 
-// Send a message (REST endpoint - mainly for non-socket clients)
+// REST fallback for clients without a socket connection.
 export const sendMessage = async (req, res) => {
   try {
     const { conversationId } = req.params;
-    const { content, type = 'text' } = req.body;
+    const { content } = req.body;
 
-    if (!content) {
+    if (typeof content !== 'string' || !content.trim()) {
       return res.status(400).json({ message: 'Message content is required' });
     }
 
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
+    if (!conversation || !isParticipant(conversation, req.userId)) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
-
-    if (!conversation.participants.includes(req.userId)) {
-      return res.status(403).json({ message: 'Not authorized to send message' });
-    }
-
-    const sanitizedContent = sanitizeMessage(content);
-
-    // Get who's online
-    const onlineUsers = new Set(); // In production, check real online status
-    const deliveredTo = conversation.participants.filter(id => id !== req.userId && onlineUsers.has(id));
 
     const message = await Message.create({
       conversationId,
       sender: req.userId,
-      type,
-      content: sanitizedContent,
-      deliveredTo
+      type: 'text',
+      content: sanitizeMessage(content),
     });
 
-    const sender = await User.findById(req.userId);
-    const formattedMsg = formatMessage({ ...message, sender: formatUser(sender) });
-
-    // Update conversation's last message
     await Conversation.update(conversationId, {
       lastMessage: message.messageId,
-      lastMessageAt: new Date().toISOString()
+      lastMessageAt: message.createdAt,
+      deletedFor: [],
     });
 
-    res.status(201).json({ message: formattedMsg });
+    const usersById = await User.findManyByIds(conversation.participants);
+    const formatted = formatMessage(message, req.userId, usersById);
+    conversation.participants.forEach(p => emitToUser(p, 'conversation:notify', formatted));
+
+    res.status(201).json({ message: formatted });
   } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Send message error');
   }
 };
 
-// Mark message as read
 export const markAsRead = async (req, res) => {
   try {
     const { messageId } = req.params;
-
     const message = await Message.findById(messageId);
     if (!message) {
       return res.status(404).json({ message: 'Message not found' });
     }
 
     const conversation = await Conversation.findById(message.conversationId);
-    if (!conversation || !conversation.participants.includes(req.userId)) {
-      return res.status(403).json({ message: 'Not authorized' });
+    if (!conversation || !isParticipant(conversation, req.userId)) {
+      return res.status(404).json({ message: 'Message not found' });
     }
 
-    const updatedMessage = await Message.markAsRead(messageId, req.userId);
-    const sender = await User.findById(updatedMessage.sender);
-    res.status(200).json({ message: formatMessage({ ...updatedMessage, sender: formatUser(sender) }) });
+    const alreadyRead = (message.readBy || []).some(r => r.user === req.userId);
+    const updated = await Message.markAsRead(messageId, req.userId);
+
+    if (!alreadyRead && message.sender !== req.userId) {
+      await notifyRead([{
+        messageId,
+        conversationId: message.conversationId,
+        sender: message.sender,
+      }], req.userId);
+    }
+
+    const usersById = await User.findManyByIds(conversation.participants);
+    res.status(200).json({ message: formatMessage(updated, req.userId, usersById) });
   } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Mark as read error');
   }
 };
 
-// Search users — restricted to the requester's own contacts
+// "Delete for me": hides the message from the requester only.
+export const deleteMessageForMe = async (req, res) => {
+  try {
+    const message = await Message.findById(req.params.messageId);
+    if (!message) {
+      return res.status(404).json({ message: 'Message not found' });
+    }
+    const conversation = await Conversation.findById(message.conversationId);
+    if (!conversation || !isParticipant(conversation, req.userId)) {
+      return res.status(404).json({ message: 'Message not found' });
+    }
+
+    const deletedFor = [...new Set([...(message.deletedFor || []), req.userId])];
+    await Message.update(message.messageId, { deletedFor });
+    res.status(200).json({ message: 'Message deleted for you' });
+  } catch (error) {
+    sendError(res, error, 'Delete message error');
+  }
+};
+
+// --- people ------------------------------------------------------------------
+
 export const searchUsers = async (req, res) => {
   try {
     const { query } = req.query;
-
-    if (!query || query.length < 2 || query.length > 100) {
+    if (typeof query !== 'string' || query.length < 2 || query.length > 100) {
       return res.status(400).json({ message: 'Search query must be between 2 and 100 characters' });
     }
 
     const queryLower = query.toLowerCase();
     const me = await User.findById(req.userId);
-    const contactIds = me.contacts || [];
+    const contacts = await User.findManyByIds(me.contacts || []);
 
-    // Get contact details and filter by query
-    const contactUsers = await Promise.all(
-      contactIds.map(async (contactId) => {
-        const contact = await User.findById(contactId);
-        return contact;
-      })
-    );
-
-    const filtered = contactUsers
-      .filter(Boolean)
+    const users = [...contacts.values()]
       .filter(u =>
         (u.name && u.name.toLowerCase().includes(queryLower)) ||
-        (u.email && u.email.toLowerCase().includes(queryLower))
-      )
+        (u.email && u.email.toLowerCase().includes(queryLower)))
       .slice(0, 10)
-      .map(u => formatUser(u));
+      .map(u => formatUser(u, me));
 
-    res.status(200).json({ users: filtered });
+    res.status(200).json({ users });
   } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Search users error');
   }
 };
 
-// Add a contact by exact email address
+/**
+ * Another user's profile. Visible only to someone who has them as a contact or
+ * shares a conversation with them; everyone else gets the same 404 as a
+ * nonexistent user, so profiles can't be probed by id.
+ */
+export const getUserProfile = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const viewerId = req.userId;
+
+    const [viewer, target] = await Promise.all([User.findById(viewerId), User.findById(userId)]);
+    if (!viewer || !target) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const isSelf = viewerId === userId;
+    const isContact = (viewer.contacts || []).includes(userId);
+    const shared = isSelf ? null : await Conversation.findOne({
+      type: 'private',
+      participants: { $all: [viewerId, userId] },
+    });
+
+    if (!isSelf && !isContact && !shared) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({
+      user: {
+        ...formatUser(target, viewer),
+        isContact,
+        nickname: viewer.contactNicknames?.[userId] || null,
+        conversationId: shared && !(shared.deletedFor || []).includes(viewerId) ? shared.conversationId : null,
+        memberSince: target.createdAt,
+      },
+    });
+  } catch (error) {
+    sendError(res, error, 'Get user profile error');
+  }
+};
+
 export const addContact = async (req, res) => {
   try {
     const { email } = req.body;
-
-    if (!email) {
+    if (typeof email !== 'string' || !email.trim()) {
       return res.status(400).json({ message: 'Email is required' });
     }
 
@@ -405,7 +406,6 @@ export const addContact = async (req, res) => {
     if (!contactUser) {
       return res.status(404).json({ message: 'No user found with that email' });
     }
-
     if (contactUser.userId === req.userId) {
       return res.status(400).json({ message: 'You cannot add yourself' });
     }
@@ -415,21 +415,13 @@ export const addContact = async (req, res) => {
       return res.status(400).json({ message: 'Already in your contacts' });
     }
 
-    await User.update(req.userId, {
-      contacts: [...(me.contacts || []), contactUser.userId]
-    });
-
-    res.status(200).json({
-      message: 'Contact added',
-      contact: formatUser(contactUser)
-    });
+    await User.addContact(req.userId, contactUser.userId);
+    res.status(200).json({ message: 'Contact added', contact: formatUser(contactUser, me) });
   } catch (error) {
-    console.error('Add contact error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Add contact error');
   }
 };
 
-// List the requester's contacts (with any personal nicknames)
 export const getContacts = async (req, res) => {
   try {
     const me = await User.findById(req.userId);
@@ -437,33 +429,19 @@ export const getContacts = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const contactIds = me.contacts || [];
-    const contactUsers = await Promise.all(
-      contactIds.map(async (contactId) => {
-        try {
-          const contact = await User.findById(contactId);
-          if (!contact) return null;
+    const contactsById = await User.findManyByIds(me.contacts || []);
+    const contacts = (me.contacts || [])
+      .map(id => contactsById.get(id))
+      .filter(Boolean)
+      .map(c => ({ ...formatUser(c, me), nickname: me.contactNicknames?.[c.userId] || null }))
+      .sort((a, b) => (a.nickname || a.name).localeCompare(b.nickname || b.name));
 
-          return {
-            ...formatUser(contact),
-            nickname: (me.contactNicknames && me.contactNicknames[contact.userId]) || null
-          };
-        } catch (err) {
-          console.error(`Error fetching contact ${contactId}:`, err);
-          return null;
-        }
-      })
-    );
-
-    const contacts = contactUsers.filter(Boolean);
     res.status(200).json({ contacts });
   } catch (error) {
-    console.error('Get contacts error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Get contacts error');
   }
 };
 
-// Set (or clear with empty value) a personal nickname for a contact
 export const setContactNickname = async (req, res) => {
   try {
     const { contactId } = req.params;
@@ -474,97 +452,34 @@ export const setContactNickname = async (req, res) => {
       return res.status(400).json({ message: 'Not in your contacts' });
     }
 
-    const trimmed = (nickname || '').trim();
+    const trimmed = (typeof nickname === 'string' ? nickname : '').trim();
     if (trimmed.length > 50) {
       return res.status(400).json({ message: 'Nickname too long (max 50 characters)' });
     }
 
-    const updated = { ...me.contactNicknames || {} };
-    if (trimmed) {
-      updated[contactId] = trimmed;
-    } else {
-      delete updated[contactId];
-    }
-
-    await User.update(req.userId, { contactNicknames: updated });
-
+    await User.setContactNickname(req.userId, contactId, trimmed ? sanitizeMessage(trimmed) : null);
     res.status(200).json({ message: 'Nickname updated', nickname: trimmed || null });
   } catch (error) {
-    console.error('Set nickname error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Set nickname error');
   }
 };
 
-// Remove a contact
 export const removeContact = async (req, res) => {
   try {
     const { contactId } = req.params;
-
     const me = await User.findById(req.userId);
     if (!(me.contacts || []).includes(contactId)) {
       return res.status(404).json({ message: 'Contact not found' });
     }
-
-    await User.update(req.userId, {
-      contacts: (me.contacts || []).filter(id => id !== contactId)
-    });
-
+    await User.removeContact(req.userId, contactId);
     res.status(200).json({ message: 'Contact removed' });
   } catch (error) {
-    console.error('Remove contact error:', error);
-    res.status(500).json({ message: 'Server error' });
+    sendError(res, error, 'Remove contact error');
   }
 };
 
-// Get conversation details
-export const getConversationDetails = async (req, res) => {
-  try {
-    const { conversationId } = req.params;
+// --- media -------------------------------------------------------------------
 
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ message: 'Conversation not found' });
-    }
-
-    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
-      return res.status(403).json({ message: 'Not authorized to view this conversation' });
-    }
-
-    // Populate participants
-    const participants = await Promise.all(
-      conversation.participants.map(async (pId) => {
-        const user = await User.findById(pId);
-        return formatUser(user);
-      })
-    );
-
-    // Populate lastMessage
-    let lastMessage = null;
-    if (conversation.lastMessage) {
-      const msg = await Message.findById(conversation.lastMessage);
-      if (msg) {
-        const sender = await User.findById(msg.sender);
-        lastMessage = formatMessage({ ...msg, sender: formatUser(sender) });
-      }
-    }
-
-    const createdByUser = conversation.createdBy ? await User.findById(conversation.createdBy) : null;
-
-    res.status(200).json({
-      conversation: formatConversation({
-        ...conversation,
-        participants,
-        lastMessage,
-        createdBy: formatUser(createdByUser)
-      })
-    });
-  } catch (error) {
-    console.error('Chat error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Upload media file
 export const uploadMedia = async (req, res) => {
   try {
     const { conversationId } = req.body;
@@ -572,173 +487,80 @@ export const uploadMedia = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ message: 'No file provided' });
     }
-
     if (!conversationId) {
       return res.status(400).json({ message: 'Conversation ID is required' });
     }
 
-    // Verify user is a participant in the conversation
     const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
+    if (!conversation || !isParticipant(conversation, req.userId)) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
 
-    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
-      return res.status(403).json({ message: 'Not authorized to upload to this conversation' });
-    }
-
-    console.log('Uploading file:', req.file.originalname, 'Size:', req.file.size, 'MIME:', req.file.mimetype);
-
     const uploadResult = await uploadFile(req.file.buffer, req.file.originalname, conversationId, req.file.mimetype);
-
-    console.log('Upload successful:', uploadResult.url);
 
     res.status(200).json({
       url: uploadResult.url,
       fileName: req.file.originalname,
       fileSize: uploadResult.size,
       storageKey: uploadResult.key,
-      s3Key: uploadResult.key
+      s3Key: uploadResult.key,
     });
   } catch (error) {
     console.error('Upload error:', error);
-    res.status(500).json({ message: 'Upload failed', error: error.message });
+    res.status(500).json({ message: 'Upload failed. Please try again.' });
   }
 };
 
-// Helper function to get MIME type based on file extension
-const getMimeType = (fileName) => {
-  const ext = fileName.toLowerCase().split('.').pop();
-  const mimeTypes = {
-    'jpg': 'image/jpeg',
-    'jpeg': 'image/jpeg',
-    'png': 'image/png',
-    'gif': 'image/gif',
-    'webp': 'image/webp',
-    'pdf': 'application/pdf',
-    'doc': 'application/msword',
-    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-    'txt': 'text/plain',
-    'mp3': 'audio/mpeg',
-    'wav': 'audio/wav',
-    'ogg': 'audio/ogg',
-    'mp4': 'video/mp4',
-    'webm': 'video/webm',
-    'mov': 'video/quicktime'
-  };
-  return mimeTypes[ext] || 'application/octet-stream';
+const MIME_TYPES = {
+  jpg: 'image/jpeg',
+  jpeg: 'image/jpeg',
+  png: 'image/png',
+  gif: 'image/gif',
+  webp: 'image/webp',
+  pdf: 'application/pdf',
+  doc: 'application/msword',
+  docx: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  txt: 'text/plain',
+  mp3: 'audio/mpeg',
+  wav: 'audio/wav',
+  ogg: 'audio/ogg',
+  mp4: 'video/mp4',
+  webm: 'video/webm',
+  mov: 'video/quicktime',
 };
+
+const getMimeType = (fileName) => MIME_TYPES[fileName.toLowerCase().split('.').pop()] || 'application/octet-stream';
 
 export const downloadFile = async (req, res) => {
   try {
-    const { messageId } = req.params;
-
-    console.log('📥 Download request for message:', messageId);
-
-    // Fetch the message to get file details
-    const message = await Message.findById(messageId);
+    const message = await Message.findById(req.params.messageId);
     if (!message || !message.fileUrl) {
       return res.status(404).json({ message: 'File not found' });
     }
 
-    // Verify user has access to this conversation
     const conversation = await Conversation.findById(message.conversationId);
-    if (!conversation) {
-      return res.status(404).json({ message: 'Conversation not found' });
+    if (!conversation || !isParticipant(conversation, req.userId)) {
+      return res.status(404).json({ message: 'File not found' });
+    }
+    if (!message.storageKey) {
+      return res.status(400).json({ message: 'File not available in storage' });
     }
 
-    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
-      return res.status(403).json({ message: 'Not authorized to download this file' });
+    const mimeType = getMimeType(message.fileName || '');
+    const buffer = await downloadFromStorage(message.storageKey, resourceTypeFor(mimeType));
+    if (buffer.length === 0) {
+      return res.status(400).json({ message: 'File is empty' });
     }
 
-    const mimeType = getMimeType(message.fileName);
-
-    try {
-      if (!message.storageKey) {
-        return res.status(400).json({ message: 'File not available in storage' });
-      }
-
-      const buffer = await downloadFromStorage(message.storageKey, resourceTypeFor(mimeType));
-
-      if (buffer.length === 0) {
-        return res.status(400).json({ message: 'File is empty' });
-      }
-
-      res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(message.fileName)}"`);
-      res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
-      res.setHeader('Content-Length', buffer.length);
-      res.type(mimeType);
-      res.send(buffer);
-    } catch (err) {
-      console.error('❌ Failed to stream file:', err.message);
-      if (!res.headersSent) {
-        res.status(500).json({ message: 'Failed to download file from storage' });
-      }
-    }
+    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(message.fileName)}"`);
+    res.setHeader('Cache-Control', 'no-cache, no-store, must-revalidate');
+    res.setHeader('Content-Length', buffer.length);
+    res.type(mimeType);
+    res.send(buffer);
   } catch (error) {
     console.error('Download error:', error);
     if (!res.headersSent) {
-      res.status(500).json({ message: 'Server error' });
+      res.status(500).json({ message: 'Failed to download file' });
     }
-  }
-};
-
-// Delete conversation (for current user only)
-export const deleteConversation = async (req, res) => {
-  try {
-    const { conversationId } = req.params;
-
-    // Find conversation
-    const conversation = await Conversation.findById(conversationId);
-    if (!conversation) {
-      return res.status(404).json({ message: 'Conversation not found' });
-    }
-
-    // Verify user is a participant
-    if (!conversation.participants || !conversation.participants.includes(req.userId)) {
-      return res.status(403).json({ message: 'Not authorized to delete this conversation' });
-    }
-
-    // Mark conversation as deleted for this user only
-    const deletedFor = conversation.deletedFor || [];
-    if (!deletedFor.includes(req.userId)) {
-      deletedFor.push(req.userId);
-      await Conversation.update(conversationId, { deletedFor });
-    }
-
-    // Also mark all messages as deleted for this user
-    const messages = await Message.findByConversation(conversationId);
-    for (const msg of messages) {
-      const msgDeletedFor = msg.deletedFor || [];
-      if (!msgDeletedFor.includes(req.userId)) {
-        msgDeletedFor.push(req.userId);
-        await Message.update(msg.messageId, { deletedFor: msgDeletedFor });
-      }
-    }
-
-    // Check if every participant has deleted the conversation
-    const updatedConv = await Conversation.findById(conversationId);
-    const allDeleted = updatedConv.participants.every(p =>
-      updatedConv.deletedFor && updatedConv.deletedFor.includes(p)
-    );
-
-    if (allDeleted) {
-      const mediaMessages = messages.filter(m => m.storageKey);
-      for (const msg of mediaMessages) {
-        try {
-          await deleteFile(msg.storageKey, resourceTypeFor(getMimeType(msg.fileName || '')));
-        } catch (storageErr) {
-          console.error('Failed to delete stored file:', msg.storageKey, storageErr.message);
-        }
-      }
-
-      await Message.deleteMany({ conversation: conversationId });
-      await Conversation.findByIdAndDelete(conversationId);
-    }
-
-    res.status(200).json({ message: 'Conversation deleted for you' });
-  } catch (error) {
-    console.error('Delete conversation error:', error);
-    res.status(500).json({ message: 'Server error' });
   }
 };

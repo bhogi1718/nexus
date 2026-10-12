@@ -18,6 +18,10 @@ const userSchema = new mongoose.Schema({
   lastSeen: { type: String, default: () => new Date().toISOString() },
   accountLockoutUntil: { type: String, default: null },
   failedOtpAttempts: { type: Number, default: 0 },
+  settings: {
+    readReceipts: { type: Boolean, default: true },
+    showLastSeen: { type: Boolean, default: true },
+  },
   createdAt: { type: String, default: () => new Date().toISOString() }
 }, { versionKey: false });
 
@@ -50,6 +54,20 @@ export class User {
 
   static async findByIdWithSecretKey(userId) {
     return this.findById(userId);
+  }
+
+  /** Batch lookup, returned as a Map keyed by userId. */
+  static async findManyByIds(userIds) {
+    const ids = [...new Set((userIds || []).filter(Boolean).map(String))];
+    if (!ids.length) return new Map();
+    const docs = await UserModel.find({ userId: { $in: ids } });
+    return new Map(docs.map(d => [d.userId, toPlain(d)]));
+  }
+
+  /** userIds of everyone who has `userId` in their contact list. */
+  static async findIdsWithContact(userId) {
+    const docs = await UserModel.find({ contacts: userId }, { userId: 1 });
+    return docs.map(d => d.userId);
   }
 
   static async update(userId, updates) {

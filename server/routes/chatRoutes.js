@@ -15,7 +15,9 @@ import {
   addContact,
   getContacts,
   removeContact,
-  setContactNickname
+  setContactNickname,
+  getUserProfile,
+  deleteMessageForMe
 } from '../controllers/chatController.js';
 import { verifyToken } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
@@ -36,10 +38,14 @@ router.delete('/conversation/:conversationId', deleteConversation);
 router.get('/conversation/:conversationId/messages', getMessages);
 router.post('/conversation/:conversationId/message', sendMessage);
 router.put('/message/:messageId/read', markAsRead);
+router.delete('/message/:messageId', deleteMessageForMe);
 router.put('/conversation/:conversationId/read', markConversationRead);
 
 // Search (contacts only)
 router.get('/search/users', searchUsers);
+
+// Another user's profile (contacts and people you share a chat with)
+router.get('/users/:userId', getUserProfile);
 
 // Contacts
 router.get('/contacts', getContacts);

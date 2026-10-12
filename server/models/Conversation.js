@@ -68,6 +68,15 @@ export class Conversation {
     return this.update(conversationId, rest);
   }
 
+  /** Lightweight: ids and participants of every conversation a user is in. */
+  static async findForUser(userId) {
+    const docs = await ConversationModel.find(
+      { participants: userId },
+      { conversationId: 1, participants: 1 }
+    );
+    return docs.map(d => ({ conversationId: d.conversationId, participants: d.participants }));
+  }
+
   static async findByIdAndDelete(conversationId) {
     await ConversationModel.deleteOne({ conversationId });
     return true;

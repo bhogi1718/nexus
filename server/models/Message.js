@@ -51,6 +51,25 @@ export class Message {
     return (await query).map(toPlain);
   }
 
+  /**
+   * The newest `limit` messages visible to `viewerId`, returned oldest-first for
+   * display. `before` (an ISO timestamp) pages back through older history.
+   */
+  static async findRecent(conversationId, viewerId, limit = 50, before = null) {
+    const query = { conversationId, deletedFor: { $ne: viewerId } };
+    if (before) query.createdAt = { $lt: before };
+    const docs = await MessageModel.find(query).sort({ createdAt: -1 }).limit(limit + 1);
+    const hasMore = docs.length > limit;
+    return { messages: docs.slice(0, limit).reverse().map(toPlain), hasMore };
+  }
+
+  static async findManyByIds(messageIds) {
+    const ids = (messageIds || []).filter(Boolean);
+    if (!ids.length) return new Map();
+    const docs = await MessageModel.find({ messageId: { $in: ids } });
+    return new Map(docs.map(d => [d.messageId, toPlain(d)]));
+  }
+
   static async countByConversationAndUser(conversationId, userId) {
     return MessageModel.countDocuments({
       conversationId,
@@ -77,14 +96,66 @@ export class Message {
 
   static async markAsRead(messageId, userId) {
     const doc = await MessageModel.findOneAndUpdate(
-      { messageId, 'readBy.user': { $ne: userId } },
+      { messageId, sender: { $ne: userId }, 'readBy.user': { $ne: userId } },
       {
         $push: { readBy: { user: userId, readAt: new Date().toISOString() } },
+        $addToSet: { deliveredTo: userId },
         $set: { updatedAt: new Date().toISOString() }
       },
       { new: true }
     );
     return toPlain(doc) || this.findById(messageId);
+  }
+
+  /**
+   * Records that `userId`'s device received these messages. Only messages that
+   * weren't already marked are touched, and those are returned so the caller can
+   * tell each sender exactly what changed.
+   */
+  static async markDelivered(messageIds, userId, allowedConversationIds) {
+    if (!messageIds?.length) return [];
+    const query = { messageId: { $in: messageIds }, sender: { $ne: userId }, deliveredTo: { $ne: userId } };
+    // Restrict to conversations the user belongs to, so nobody can stamp
+    // themselves onto messages in conversations they aren't part of.
+    if (allowedConversationIds) query.conversationId = { $in: [...allowedConversationIds] };
+    const pending = await MessageModel.find(
+      query,
+      { messageId: 1, conversationId: 1, sender: 1 }
+    );
+    if (!pending.length) return [];
+    await MessageModel.updateMany(
+      { messageId: { $in: pending.map(m => m.messageId) } },
+      { $addToSet: { deliveredTo: userId } }
+    );
+    return pending.map(m => ({ messageId: m.messageId, conversationId: m.conversationId, sender: m.sender }));
+  }
+
+  /** Messages addressed to `userId` in these conversations that never reached them. */
+  static async findUndelivered(conversationIds, userId) {
+    if (!conversationIds?.length) return [];
+    const docs = await MessageModel.find(
+      { conversationId: { $in: conversationIds }, sender: { $ne: userId }, deliveredTo: { $ne: userId } },
+      { messageId: 1 }
+    );
+    return docs.map(d => d.messageId);
+  }
+
+  /**
+   * Marks every unread incoming message in a conversation as read (and therefore
+   * delivered) for `userId`. Returns the messages that changed.
+   */
+  static async markConversationRead(conversationId, userId) {
+    const unread = await MessageModel.find(
+      { conversationId, sender: { $ne: userId }, 'readBy.user': { $ne: userId } },
+      { messageId: 1, conversationId: 1, sender: 1 }
+    );
+    if (!unread.length) return [];
+    const readAt = new Date().toISOString();
+    await MessageModel.updateMany(
+      { messageId: { $in: unread.map(m => m.messageId) } },
+      { $push: { readBy: { user: userId, readAt } }, $addToSet: { deliveredTo: userId } }
+    );
+    return unread.map(m => ({ messageId: m.messageId, conversationId: m.conversationId, sender: m.sender, readAt }));
   }
 
   static async deleteMany(filter) {

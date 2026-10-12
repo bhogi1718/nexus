@@ -1,6 +1,22 @@
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import { sanitizeInput } from '../services/sanitizationService.js';
+
+// The signed-in user's own record, including their privacy settings.
+const formatSelf = (user) => ({
+  id: user.userId,
+  name: user.name,
+  email: user.email,
+  avatar: user.avatar,
+  status: user.status,
+  publicKey: user.publicKey,
+  secretKey: user.secretKey,
+  createdAt: user.createdAt,
+  settings: {
+    readReceipts: user.settings?.readReceipts !== false,
+    showLastSeen: user.settings?.showLastSeen !== false,
+  },
+});
 import { generateAndSaveOTP, verifyOTP } from '../services/emailOtpService.js';
 import { generateTokens, verifyRefreshToken } from '../services/tokenService.js';
 
@@ -70,13 +86,7 @@ export const verifyOTPAndRegister = async (req, res) => {
       message: 'User registered successfully',
       accessToken,
       refreshToken,
-      user: {
-        id: newUser.userId,
-        name: newUser.name,
-        email: newUser.email,
-        avatar: newUser.avatar,
-        status: newUser.status
-      }
+      user: formatSelf(newUser)
     });
   } catch (error) {
     console.error('Verify OTP and register error:', error);
@@ -139,15 +149,7 @@ export const verifyOTPAndLogin = async (req, res) => {
       message: 'Login successful',
       accessToken,
       refreshToken,
-      user: {
-        id: user.userId,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        status: user.status,
-        publicKey: user.publicKey,
-        secretKey: user.secretKey
-      }
+      user: formatSelf(user)
     });
   } catch (error) {
     console.error('Verify OTP and login error:', error);
@@ -197,13 +199,7 @@ export const register = async (req, res) => {
       message: 'User registered successfully',
       accessToken,
       refreshToken,
-      user: {
-        id: newUser.userId,
-        name: newUser.name,
-        email: newUser.email,
-        avatar: newUser.avatar,
-        status: newUser.status
-      }
+      user: formatSelf(newUser)
     });
   } catch (error) {
     console.error('Auth error:', error);
@@ -259,17 +255,7 @@ export const getProfile = async (req, res) => {
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
-    res.status(200).json({
-      user: {
-        id: user.userId,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        status: user.status,
-        publicKey: user.publicKey,
-        secretKey: user.secretKey
-      }
-    });
+    res.status(200).json({ user: formatSelf(user) });
   } catch (error) {
     console.error('Auth error:', error);
     res.status(500).json({ message: 'Server error' });
@@ -307,20 +293,35 @@ export const updateProfile = async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    res.status(200).json({
-      message: 'Profile updated',
-      user: {
-        id: user.userId,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        status: user.status,
-        publicKey: user.publicKey,
-        secretKey: user.secretKey
-      }
-    });
+    res.status(200).json({ message: 'Profile updated', user: formatSelf(user) });
   } catch (error) {
     console.error('Update profile error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Privacy settings: read receipts and last-seen visibility (both reciprocal).
+export const updateSettings = async (req, res) => {
+  try {
+    const updates = {};
+    for (const key of ['readReceipts', 'showLastSeen']) {
+      if (req.body[key] === undefined) continue;
+      if (typeof req.body[key] !== 'boolean') {
+        return res.status(400).json({ message: `${key} must be true or false` });
+      }
+      updates[`settings.${key}`] = req.body[key];
+    }
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+
+    const user = await User.update(req.userId, updates);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    res.status(200).json({ message: 'Settings updated', user: formatSelf(user) });
+  } catch (error) {
+    console.error('Update settings error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };
