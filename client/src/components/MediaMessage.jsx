@@ -1,132 +1,108 @@
 import React, { useState } from 'react';
 import { Icon } from './ui/Icon';
+import { useToast } from './ui/Toast';
 import { FilePreviewModal } from './FilePreviewModal';
+import { attachmentKind, downloadAttachment, formatFileSize } from '../utils/download';
 
 export const MediaMessage = ({ message, isCurrentUser }) => {
   const [showPreview, setShowPreview] = useState(false);
+  const [downloading, setDownloading] = useState(false);
+  const toast = useToast();
 
-  if (!message.fileUrl) {
-    return null;
-  }
+  if (!message.fileUrl) return null;
 
-  const getMediaType = (url) => {
-    // Extract filename before query parameters
-    const urlPath = url.split('?')[0].split('#')[0];
-    const filename = urlPath.toLowerCase();
+  const kind = attachmentKind(message);
+  const size = formatFileSize(message.fileSize);
+  const file = { url: message.fileUrl, fileName: message.fileName, size: message.fileSize, messageId: message._id, kind };
 
-    if (filename.match(/\.(jpg|jpeg|png|gif|webp)$/i)) return 'image';
-    if (filename.match(/\.(mp4|webm|mov)$/i)) return 'video';
-    if (filename.match(/\.pdf$/i)) return 'pdf';
-    if (filename.match(/\.(doc|docx|txt)$/i)) return 'document';
-    if (filename.match(/\.(mp3|wav|ogg)$/i)) return 'audio';
-    return 'file';
-  };
-
-  const mediaType = getMediaType(message.fileUrl);
-
-  const downloadFile = () => {
-    // Download directly from S3 signed URL
-    const a = document.createElement('a');
-    a.href = message.fileUrl;
-    a.download = message.fileName;
-    a.target = '_blank';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-  };
-
-  const renderMedia = () => {
-    switch (mediaType) {
-      case 'image':
-        return (
-          <div className="cursor-pointer" onClick={() => setShowPreview(true)}>
-            <img
-              src={message.fileUrl}
-              alt={message.fileName}
-              className="max-w-xs rounded-lg hover:opacity-90 transition-opacity"
-            />
-          </div>
-        );
-      case 'video':
-        return (
-          <div className="cursor-pointer" onClick={() => setShowPreview(true)}>
-            <video
-              src={message.fileUrl}
-              controls
-              className="max-w-xs rounded-lg hover:opacity-90 transition-opacity"
-            />
-          </div>
-        );
-      case 'audio':
-        return (
-          <div className="flex items-center gap-2">
-            <audio
-              src={message.fileUrl}
-              controls
-              className="flex-1"
-            />
-            <button
-              onClick={downloadFile}
-              className={`p-2 rounded-lg transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isCurrentUser ? 'hover:bg-black/10' : 'hover:bg-surface-container-high'}`}
-              title="Download audio"
-              aria-label="Download audio"
-            >
-              <Icon name="download" className="text-[18px]" />
-            </button>
-          </div>
-        );
-      case 'pdf':
-      case 'document':
-      case 'file':
-        return (
-          <div
-            onClick={() => setShowPreview(true)}
-            className={`flex items-center gap-2 p-3 rounded-lg cursor-pointer transition-colors ${
-              isCurrentUser ? 'bg-black/10 hover:bg-black/20' : 'bg-background hover:bg-surface-container-high'
-            }`}
-          >
-            <Icon name="description" className={`text-[24px] flex-shrink-0 ${isCurrentUser ? 'text-on-primary-container' : 'text-on-surface-variant'}`} />
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm truncate">{message.fileName}</p>
-              {message.fileSize && (
-                <p className={`text-xs ${isCurrentUser ? 'text-on-primary-container/70' : 'text-on-surface-variant'}`}>
-                  {(message.fileSize / 1024 / 1024).toFixed(2)} MB
-                </p>
-              )}
-            </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                downloadFile();
-              }}
-              className={`p-2 rounded transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary ${isCurrentUser ? 'hover:bg-black/10' : 'hover:bg-outline-variant'}`}
-              title="Download file"
-              aria-label="Download file"
-            >
-              <Icon name="download" className="text-[18px]" />
-            </button>
-          </div>
-        );
-      default:
-        return <p className="text-sm text-on-surface-variant">Unsupported file type</p>;
+  const download = async (e) => {
+    e?.stopPropagation();
+    setDownloading(true);
+    try {
+      await downloadAttachment(file);
+    } catch {
+      toast.error('Could not download this file. Please try again.');
+    } finally {
+      setDownloading(false);
     }
   };
 
+  const tint = isCurrentUser ? 'bg-black/10 hover:bg-black/15' : 'bg-surface-sunken hover:bg-surface-accent/60';
+
   return (
-    <div className="mt-2">
-      {renderMedia()}
-      {message.content && (
-        <p className="text-sm mt-2 break-words">{message.content}</p>
+    <div className="-mx-1.5 mt-0.5 mb-1">
+      {kind === 'image' && (
+        <button
+          type="button"
+          onClick={() => setShowPreview(true)}
+          aria-label={`Open image ${message.fileName || ''}`}
+          className="block overflow-hidden rounded-[14px]"
+        >
+          {/* Fixed box so the chat doesn't jump when the image finishes loading. */}
+          <img
+            src={message.fileUrl}
+            alt={message.fileName || 'Image'}
+            loading="lazy"
+            className="w-64 max-w-full aspect-[4/3] object-cover bg-surface-sunken transition-transform duration-base hover:scale-[1.02]"
+          />
+        </button>
       )}
-      <FilePreviewModal
-        file={showPreview ? {
-          url: message.fileUrl,
-          fileName: message.fileName,
-          size: message.fileSize,
-          messageId: message._id
-        } : null}
-        onClose={() => setShowPreview(false)}
-      />
+
+      {kind === 'video' && (
+        <video
+          src={message.fileUrl}
+          controls
+          preload="metadata"
+          className="w-64 max-w-full aspect-video rounded-[14px] bg-black"
+        />
+      )}
+
+      {kind === 'audio' && (
+        <div className="flex items-center gap-1.5 w-64 max-w-full">
+          <audio src={message.fileUrl} controls preload="metadata" className="flex-1 min-w-0 h-10" />
+          <DownloadButton onClick={download} loading={downloading} isCurrentUser={isCurrentUser} />
+        </div>
+      )}
+
+      {(kind === 'pdf' || kind === 'file') && (
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => setShowPreview(true)}
+          onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowPreview(true); } }}
+          className={`flex items-center gap-sm w-64 max-w-full p-2.5 rounded-xl cursor-pointer transition-colors duration-fast ${tint}`}
+        >
+          <span className={`w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0
+            ${isCurrentUser ? 'bg-white/15' : 'bg-surface'}`}>
+            <Icon name={kind === 'pdf' ? 'picture_as_pdf' : 'description'} className="text-[22px]" />
+          </span>
+          <span className="flex-1 min-w-0">
+            <span className="block text-body-sm font-semibold truncate">{message.fileName || 'File'}</span>
+            <span className={`block text-caption ${isCurrentUser ? 'text-content-on-primary/70' : 'text-content-muted'}`}>
+              {[kind === 'pdf' ? 'PDF' : 'Document', size].filter(Boolean).join(' · ')}
+            </span>
+          </span>
+          <DownloadButton onClick={download} loading={downloading} isCurrentUser={isCurrentUser} />
+        </div>
+      )}
+
+      {showPreview && (
+        <FilePreviewModal file={file} onClose={() => setShowPreview(false)} onDownload={download} downloading={downloading} />
+      )}
     </div>
   );
 };
+
+const DownloadButton = ({ onClick, loading, isCurrentUser }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={loading}
+    aria-label="Download file"
+    title="Download"
+    className={`w-9 h-9 flex-shrink-0 rounded-full flex items-center justify-center transition-colors duration-fast disabled:opacity-60
+      ${isCurrentUser ? 'hover:bg-white/15' : 'hover:bg-surface'}`}
+  >
+    <Icon name={loading ? 'progress_activity' : 'download'} className={`text-[20px] ${loading ? 'animate-spin' : ''}`} />
+  </button>
+);

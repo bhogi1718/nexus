@@ -56,27 +56,24 @@ api.interceptors.response.use(
       try {
         const refreshToken = localStorage.getItem('refreshToken');
         if (!refreshToken) {
-          throw new Error('No refresh token available');
+          throw Object.assign(new Error('No refresh token available'), { sessionEnded: true });
         }
 
-        const { data } = await axios.post(`${API_URL}/auth/refresh`, {
-          refreshToken
-        });
+        const { data } = await axios.post(`${API_URL}/auth/refresh`, { refreshToken });
+        localStorage.setItem('accessToken', data.accessToken);
+        localStorage.setItem('refreshToken', data.refreshToken);
+        originalRequest.headers.Authorization = `Bearer ${data.accessToken}`;
 
-        const { accessToken, refreshToken: newRefreshToken } = data;
-        localStorage.setItem('accessToken', accessToken);
-        localStorage.setItem('refreshToken', newRefreshToken);
-
-        api.defaults.headers.common.Authorization = `Bearer ${accessToken}`;
-        originalRequest.headers.Authorization = `Bearer ${accessToken}`;
-
-        processQueue(null, accessToken);
+        processQueue(null, data.accessToken);
         return api(originalRequest);
       } catch (err) {
         processQueue(err, null);
-        localStorage.removeItem('accessToken');
-        localStorage.removeItem('refreshToken');
-        window.location.href = '/login';
+        // Only a rejected refresh token ends the session. A network blip while
+        // refreshing must not throw away a session that is still valid.
+        const status = err.response?.status;
+        if (err.sessionEnded || status === 401 || status === 400) {
+          endSession();
+        }
         return Promise.reject(err);
       }
     }
@@ -85,9 +82,19 @@ api.interceptors.response.use(
   }
 );
 
+// Clears everything tied to the signed-in account, including encryption keys,
+// so nothing carries over to whoever signs in next on this browser.
+const endSession = () => {
+  localStorage.removeItem('accessToken');
+  localStorage.removeItem('refreshToken');
+  localStorage.removeItem('user_publicKey');
+  localStorage.removeItem('user_secretKey');
+  if (!['/login', '/signup', '/'].includes(window.location.pathname)) {
+    window.location.href = '/login';
+  }
+};
+
 export const authAPI = {
-  register: (data) => api.post('/auth/register', data),
-  login: (data) => api.post('/auth/login', data),
   logout: () => api.post('/auth/logout'),
   getProfile: () => api.get('/auth/profile'),
   updateProfile: (data) => api.patch('/auth/profile', data),

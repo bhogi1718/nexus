@@ -17,14 +17,16 @@ export const decryptMessageIfNeeded = (message, conversation, user) => {
       p => String(p._id) !== String(user?.id)
     );
 
+    // Without keys we can't decrypt, but ciphertext must still never be shown as
+    // if it were the message.
     if (!keys?.secretKey || !otherParticipant?.publicKey) {
-      return message;
+      return looksEncrypted(message.content) ? { ...message, undecryptable: true } : message;
     }
 
     try {
       const decrypted = decryptMessage(message.content, otherParticipant.publicKey, keys.secretKey);
       return { ...message, content: decrypted, isDecrypted: true };
-    } catch (e) {
+    } catch {
       return { ...message, undecryptable: looksEncrypted(message.content) };
     }
   } catch (err) {

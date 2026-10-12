@@ -1,4 +1,3 @@
-import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
 import { sanitizeInput } from '../services/sanitizationService.js';
 
@@ -41,7 +40,7 @@ export const sendOTP = async (req, res) => {
     res.status(200).json({ message: 'OTP sent successfully', email });
   } catch (error) {
     console.error('Send OTP error:', error);
-    res.status(500).json({ message: 'Failed to send OTP', error: error.message });
+    res.status(500).json({ message: 'We could not send a code right now. Please try again.' });
   }
 };
 
@@ -115,7 +114,7 @@ export const sendOTPLogin = async (req, res) => {
     res.status(200).json({ message: 'OTP sent successfully', email });
   } catch (error) {
     console.error('Send OTP login error:', error);
-    res.status(500).json({ message: 'Failed to send OTP', error: error.message });
+    res.status(500).json({ message: 'We could not send a code right now. Please try again.' });
   }
 };
 
@@ -153,94 +152,6 @@ export const verifyOTPAndLogin = async (req, res) => {
     });
   } catch (error) {
     console.error('Verify OTP and login error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-// Legacy email+password signup (kept for backward compatibility)
-export const register = async (req, res) => {
-  try {
-    const { name, email, password, confirmPassword, publicKey } = req.body;
-
-    if (!name || !email || !password || !confirmPassword) {
-      return res.status(400).json({ message: 'All fields are required' });
-    }
-
-    if (!publicKey) {
-      return res.status(400).json({ message: 'Encryption key required' });
-    }
-
-    if (password !== confirmPassword) {
-      return res.status(400).json({ message: 'Passwords do not match' });
-    }
-
-    if (password.length < 6) {
-      return res.status(400).json({ message: 'Password must be at least 6 characters' });
-    }
-
-    const existingUser = await User.findByEmail(email);
-    if (existingUser) {
-      return res.status(400).json({ message: 'Email already registered' });
-    }
-
-    const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const newUser = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      publicKey
-    });
-
-    const { accessToken, refreshToken } = generateTokens(newUser.userId);
-
-    res.status(201).json({
-      message: 'User registered successfully',
-      accessToken,
-      refreshToken,
-      user: formatSelf(newUser)
-    });
-  } catch (error) {
-    console.error('Auth error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};
-
-export const login = async (req, res) => {
-  try {
-    const { email, password } = req.body;
-
-    if (!email || !password) {
-      return res.status(400).json({ message: 'Email and password are required' });
-    }
-
-    const user = await User.findByEmail(email);
-    if (!user) {
-      return res.status(401).json({ message: 'Invalid email or password' });
-    }
-
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: 'Invalid email or password' });
-    }
-
-    const { accessToken, refreshToken } = generateTokens(user.userId);
-
-    res.status(200).json({
-      message: 'Login successful',
-      accessToken,
-      refreshToken,
-      user: {
-        id: user.userId,
-        name: user.name,
-        email: user.email,
-        avatar: user.avatar,
-        status: user.status
-      }
-    });
-  } catch (error) {
-    console.error('Auth error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

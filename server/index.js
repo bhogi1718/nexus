@@ -43,6 +43,11 @@ if (missingEnvVars.length > 0) {
 }
 
 const app = express();
+
+// Render (and most hosts) put one proxy in front of the app. Without this every
+// request appears to come from the proxy's IP, so the rate limiters would put
+// all users in one shared bucket and lock everyone out together.
+if (isProduction) app.set('trust proxy', 1);
 const httpServer = createServer(app);
 
 // Get CORS origins from environment or use defaults
@@ -68,26 +73,32 @@ app.use(helmet()); // Secure HTTP headers
 // Rate Limiters — strict in production, generous in development
 // (dev traffic comes from one IP with multiple test accounts and hits the API constantly)
 
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
+// Sending and checking codes have separate budgets: with one shared counter a
+// single mistyped code could block requesting a new one.
+const sendCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
   max: isProduction ? 5 : 100,
-  message: 'Too many authentication attempts, please try again later',
+  message: { message: 'Too many code requests. Please wait a few minutes and try again.' },
   standardHeaders: true,
   legacyHeaders: false
 });
 
-const otpLimiter = rateLimit({
-  windowMs: 5 * 60 * 1000, // 5 minutes
-  max: isProduction ? 3 : 50,
-  message: 'Too many OTP requests, please try again later',
+// Per IP. Per-code (5 guesses) and per-account (10 failures → 1h lock) limits in
+// emailOtpService stop guessing; this stops one client hammering many accounts.
+const verifyCodeLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProduction ? 20 : 200,
+  message: { message: 'Too many attempts. Please wait a few minutes and try again.' },
   standardHeaders: true,
   legacyHeaders: false
 });
 
+// Chatting itself runs over the socket; this covers REST browsing (opening
+// chats, profiles, contacts), which a normal session easily makes hundreds of.
 const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: isProduction ? 100 : 5000,
-  message: 'Too many requests, please try again later',
+  windowMs: 15 * 60 * 1000,
+  max: isProduction ? 1000 : 10000,
+  message: { message: 'Too many requests. Please slow down and try again shortly.' },
   standardHeaders: true,
   legacyHeaders: false
 });
@@ -147,15 +158,12 @@ app.get('/api/health', (req, res) => {
   res.status(dbUp ? 200 : 503).json({ status: dbUp ? 'ok' : 'degraded', db: dbUp ? 'connected' : 'disconnected' });
 });
 
-// Apply rate limiting to auth endpoints (stricter limits)
-app.use('/api/auth/register', authLimiter);
-app.use('/api/auth/login', authLimiter);
 // app.use matches path prefixes on segment boundaries, so '/send-otp' does NOT
 // cover '/send-otp-login' — each OTP route has to be listed.
-app.use('/api/auth/send-otp', otpLimiter);
-app.use('/api/auth/send-otp-login', otpLimiter);
-app.use('/api/auth/verify-otp-signup', otpLimiter);
-app.use('/api/auth/verify-otp-login', otpLimiter);
+app.use('/api/auth/send-otp', sendCodeLimiter);
+app.use('/api/auth/send-otp-login', sendCodeLimiter);
+app.use('/api/auth/verify-otp-signup', verifyCodeLimiter);
+app.use('/api/auth/verify-otp-login', verifyCodeLimiter);
 
 // Apply general API rate limiting
 app.use('/api/', apiLimiter);

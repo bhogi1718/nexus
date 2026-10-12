@@ -1,17 +1,21 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import csrf from 'csurf';
-import { register, login, logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updatePublicKey, updateProfile, updateSettings } from '../controllers/authController.js';
+import { logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updatePublicKey, updateProfile, updateSettings } from '../controllers/authController.js';
 import { verifyToken } from '../middleware/auth.js';
 import { verifyRefreshToken, generateTokens } from '../services/tokenService.js';
 
 const router = express.Router();
 const csrfProtection = csrf({ cookie: true });
 
-// Validation middleware
-const validateEmail = body('email').isEmail().normalizeEmail().withMessage('Valid email is required');
-const validatePassword = body('password').isLength({ min: 6 }).withMessage('Password must be at least 6 characters');
-const validateName = body('name').trim().isLength({ min: 2 }).escape().withMessage('Name must be at least 2 characters');
+// Validation middleware.
+// Emails are only trimmed and lower-cased — not normalizeEmail(), which strips
+// Gmail dots/+tags at signup and then fails to match the address people type
+// when adding a contact.
+// Names are not HTML-escaped: React escapes on render, and escaping here would
+// store "D'Souza" as "D&#x27;Souza".
+const validateEmail = body('email').trim().toLowerCase().isEmail().withMessage('Valid email is required');
+const validateName = body('name').trim().isLength({ min: 2, max: 50 }).withMessage('Name must be between 2 and 50 characters');
 
 // Error handling middleware
 const handleValidationErrors = (req, res, next) => {
@@ -54,25 +58,6 @@ router.post('/verify-otp-login',
   verifyOTPAndLogin
 );
 
-// Legacy email+password signup (backward compatibility)
-router.post('/register',
-  validateName,
-  validateEmail,
-  validatePassword,
-  body('confirmPassword').isLength({ min: 6 }).withMessage('Confirm password is required'),
-  body('publicKey').notEmpty().withMessage('Public key is required'),
-  handleValidationErrors,
-  register
-);
-
-// Legacy email+password login (backward compatibility)
-router.post('/login',
-  validateEmail,
-  validatePassword,
-  handleValidationErrors,
-  login
-);
-
 router.post('/logout', verifyToken, logout);
 router.get('/profile', verifyToken, getProfile);
 router.patch('/profile', verifyToken, updateProfile);
@@ -95,7 +80,7 @@ router.post('/refresh', (req, res) => {
       refreshToken: newRefreshToken
     });
   } catch (error) {
-    res.status(401).json({ message: 'Invalid refresh token', error: error.message });
+    res.status(401).json({ message: 'Your session has expired. Please sign in again.' });
   }
 });
 

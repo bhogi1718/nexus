@@ -11,54 +11,49 @@ export const AuthProvider = ({ children }) => {
   const [accessToken, setAccessToken] = useState(localStorage.getItem('accessToken'));
 
   useEffect(() => {
-    const checkAuth = async () => {
-      if (accessToken) {
-        try {
-          const response = await authAPI.getProfile();
-          setUser(response.data.user);
-          // Restore this user's encryption keys from the server so decryption
-          // works after refresh, on new devices, and when switching accounts
-          if (response.data.user.publicKey && response.data.user.secretKey) {
-            storeKeys(response.data.user.publicKey, response.data.user.secretKey);
-          }
-          initializeSocket(accessToken);
-        } catch (error) {
-          // Only a rejected session should sign the user out. A network blip or
-          // server hiccup during page load must not throw away valid tokens.
-          if (error.response?.status === 401 || error.response?.status === 403) {
-            localStorage.removeItem('accessToken');
-            localStorage.removeItem('refreshToken');
-            setAccessToken(null);
-          }
+    let cancelled = false;
+
+    const checkAuth = async (attempt = 0) => {
+      if (!accessToken) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const response = await authAPI.getProfile();
+        if (cancelled) return;
+        setUser(response.data.user);
+        // Restore this user's encryption keys from the server so decryption
+        // works after refresh, on new devices, and when switching accounts
+        if (response.data.user.publicKey && response.data.user.secretKey) {
+          storeKeys(response.data.user.publicKey, response.data.user.secretKey);
+        }
+        initializeSocket(accessToken);
+        setLoading(false);
+      } catch (error) {
+        if (cancelled) return;
+        const status = error.response?.status;
+        // Only a rejected session signs the user out.
+        if (status === 401 || status === 403) {
+          localStorage.removeItem('accessToken');
+          localStorage.removeItem('refreshToken');
+          clearKeys();
+          setAccessToken(null);
+          setLoading(false);
+          return;
+        }
+        // A network blip or server hiccup during page load: keep the session and
+        // retry briefly instead of bouncing the user to the login screen.
+        if (attempt < 3) {
+          setTimeout(() => checkAuth(attempt + 1), 1500 * (attempt + 1));
+        } else {
+          setLoading(false);
         }
       }
-      setLoading(false);
     };
 
     checkAuth();
+    return () => { cancelled = true; };
   }, [accessToken]);
-
-  const register = async (data) => {
-    const response = await authAPI.register(data);
-    const { accessToken: newAccessToken, refreshToken } = response.data;
-    localStorage.setItem('accessToken', newAccessToken);
-    localStorage.setItem('refreshToken', refreshToken);
-    setAccessToken(newAccessToken);
-    setUser(response.data.user);
-    initializeSocket(newAccessToken);
-    return response.data;
-  };
-
-  const login = async (data) => {
-    const response = await authAPI.login(data);
-    const { accessToken: newAccessToken, refreshToken } = response.data;
-    localStorage.setItem('accessToken', newAccessToken);
-    localStorage.setItem('refreshToken', refreshToken);
-    setAccessToken(newAccessToken);
-    setUser(response.data.user);
-    initializeSocket(newAccessToken);
-    return response.data;
-  };
 
   // For OTP flows where the API call happens in the page component
   const loginWithToken = (newAccessToken, newRefreshToken, newUser) => {
@@ -87,7 +82,7 @@ export const AuthProvider = ({ children }) => {
   const updateUser = (patch) => setUser(prev => (prev ? { ...prev, ...patch } : prev));
 
   return (
-    <AuthContext.Provider value={{ user, loading, accessToken, register, login, loginWithToken, logout, updateUser }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, loginWithToken, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

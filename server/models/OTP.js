@@ -35,6 +35,19 @@ export class OTP {
     return toPlain(await OTPModel.findOne({ email: filter.email.toLowerCase() }).sort({ createdAt: -1 }));
   }
 
+  /**
+   * Atomically uses up one guess. Returns null when the code has no guesses left,
+   * so parallel requests can't all read the same count and exceed the limit.
+   */
+  static async consumeAttempt(otpId) {
+    const doc = await OTPModel.findOneAndUpdate(
+      { otpId, $expr: { $lt: ['$attempts', '$maxAttempts'] } },
+      { $inc: { attempts: 1 } },
+      { new: true }
+    );
+    return toPlain(doc);
+  }
+
   static async update(otpId, updates) {
     return toPlain(await OTPModel.findOneAndUpdate({ otpId }, { $set: updates }, { new: true }));
   }

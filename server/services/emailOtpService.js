@@ -1,5 +1,11 @@
+import crypto from 'crypto';
 import nodemailer from 'nodemailer';
 import OTP from '../models/OTP.js';
+
+const OTP_TTL_MS = 5 * 60 * 1000;
+const ACCOUNT_LOCK_THRESHOLD = 10;
+const ACCOUNT_LOCK_MS = 60 * 60 * 1000;
+const isProduction = () => process.env.NODE_ENV === 'production';
 
 let transporter = null;
 
@@ -9,184 +15,140 @@ function getTransporter() {
       service: 'gmail',
       auth: {
         user: process.env.GMAIL_USER,
-        pass: process.env.GMAIL_APP_PASSWORD
-      }
+        pass: process.env.GMAIL_APP_PASSWORD,
+      },
     });
   }
   return transporter;
 }
 
-/**
- * Generate a random 6-digit OTP
- * @returns {string} Generated OTP
- */
-function generateOTP() {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+/** A uniformly random 6-digit code from a cryptographically secure source. */
+export function generateOTP() {
+  return crypto.randomInt(100000, 1000000).toString();
 }
 
-export async function sendOTPViaEmail(email, otp) {
-  try {
-    const htmlContent = `
-      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-        <h2 style="color: #333;">Nexus Verification Code</h2>
-        <p style="color: #666; font-size: 16px;">Your verification code is:</p>
-        <div style="background: #f5f5f5; padding: 20px; border-radius: 5px; text-align: center; margin: 20px 0;">
-          <span style="font-size: 32px; font-weight: bold; letter-spacing: 5px; color: #007bff;">${otp}</span>
-        </div>
-        <p style="color: #666; font-size: 14px;">This code is <strong>6 digits</strong> and expires in <strong>5 minutes</strong>.</p>
-        <p style="color: #999; font-size: 12px; margin-top: 20px;">If you didn't request this code, please ignore this email.</p>
-      </div>
-    `;
+// Codes are stored only as a keyed hash: someone who can read the database
+// still can't sign in as anyone. Keyed with the server secret so a 6-digit code
+// can't be brute-forced offline from the hash alone.
+const hashOTP = (email, otp) =>
+  crypto.createHmac('sha256', process.env.JWT_SECRET).update(`${email}:${otp}`).digest('hex');
 
+const matches = (stored, candidate) => {
+  const a = Buffer.from(stored, 'hex');
+  const b = Buffer.from(candidate, 'hex');
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+};
+
+export async function sendOTPViaEmail(email, otp) {
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #3E2A3A;">Nexus Verification Code</h2>
+      <p style="color: #6B4A5E; font-size: 16px;">Your verification code is:</p>
+      <div style="background: #F2D7DC; padding: 20px; border-radius: 8px; text-align: center; margin: 20px 0;">
+        <span style="font-size: 32px; font-weight: bold; letter-spacing: 6px; color: #3E2A3A;">${otp}</span>
+      </div>
+      <p style="color: #6B4A5E; font-size: 14px;">This code expires in <strong>5 minutes</strong>. Never share it with anyone.</p>
+      <p style="color: #7A5668; font-size: 12px; margin-top: 20px;">If you didn't request this code, you can ignore this email.</p>
+    </div>
+  `;
+
+  try {
     const info = await getTransporter().sendMail({
       from: `"Nexus" <${process.env.GMAIL_USER}>`,
       to: email,
-      subject: 'Your Nexus Verification Code',
+      subject: 'Your Nexus verification code',
       html: htmlContent,
-      text: `Your Nexus verification code is ${otp}. It expires in 5 minutes.`
+      text: `Your Nexus verification code is ${otp}. It expires in 5 minutes. Never share it with anyone.`,
     });
-    console.log(`✓ OTP sent to ${email} | MessageId: ${info.messageId}`);
+    console.log(`OTP email sent | MessageId: ${info.messageId}`);
     return info;
   } catch (error) {
-    console.error('❌ Failed to send OTP email:', error.message);
-    throw new Error(`Failed to send OTP: ${error.message}`);
+    console.error('Failed to send OTP email:', error.message);
+    throw new Error('We could not send the code email. Please try again.');
   }
 }
 
-/**
- * Generate and save OTP for email
- * @param {string} email - Email address
- * @returns {Promise} OTP object
- */
 export async function generateAndSaveOTP(email) {
-  try {
-    // Delete any existing OTP for this email
-    await OTP.deleteMany({ email: email.toLowerCase() });
+  const emailLower = email.toLowerCase();
+  await OTP.deleteMany({ email: emailLower });
 
-    const otp = generateOTP();
-    const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString(); // 5 minutes
+  const otp = generateOTP();
+  const otpDoc = await OTP.create({
+    email: emailLower,
+    otp: hashOTP(emailLower, otp),
+    expiresAt: new Date(Date.now() + OTP_TTL_MS).toISOString(),
+  });
 
-    const otpDoc = await OTP.create({
-      email: email.toLowerCase(),
-      otp,
-      expiresAt
-    });
-
-    console.log(`📧 OTP generated for ${email}: ${otp}`);
-
-    if (process.env.NODE_ENV === 'production') {
-      await sendOTPViaEmail(email, otp);
-    } else {
-      // Development: log the OTP to console instead of sending
-      console.log(`💡 [DEV MODE] Use OTP: ${otp}`);
-    }
-
-    return otpDoc;
-  } catch (error) {
-    console.error('❌ Error generating OTP:', error.message);
-    throw error;
+  if (isProduction()) {
+    await sendOTPViaEmail(emailLower, otp);
+  } else {
+    // Development only. A code in production logs is a login for anyone who can read them.
+    console.log(`[DEV] OTP for ${emailLower}: ${otp}`);
   }
+
+  return otpDoc;
 }
 
+const recordFailure = async (User, user) => {
+  if (!user) return;
+  const failures = (user.failedOtpAttempts || 0) + 1;
+  if (failures >= ACCOUNT_LOCK_THRESHOLD) {
+    await User.update(user.userId, {
+      failedOtpAttempts: failures,
+      accountLockoutUntil: new Date(Date.now() + ACCOUNT_LOCK_MS).toISOString(),
+    });
+    throw new Error('Account temporarily locked due to too many failed attempts. Try again in 1 hour.');
+  }
+  await User.update(user.userId, { failedOtpAttempts: failures });
+};
+
 /**
- * Verify OTP with account lockout on multiple failed attempts
- * @param {string} email - Email address
- * @param {string} otp - OTP to verify
- * @returns {Promise} true if valid, false otherwise
+ * Verifies a code. Returns true/false; throws when the account is locked.
+ * Each check consumes an attempt atomically, and a correct code is single-use:
+ * only the request that actually deletes it succeeds.
  */
 export async function verifyOTP(email, otp) {
-  try {
-    const User = (await import('../models/User.js')).default;
-    const emailLower = email.toLowerCase();
+  const User = (await import('../models/User.js')).default;
+  const emailLower = String(email).toLowerCase();
 
-    // Check if account is locked
-    const user = await User.findByEmail(emailLower);
-    if (user?.accountLockoutUntil && new Date(user.accountLockoutUntil) > new Date()) {
-      const minutes = Math.ceil((new Date(user.accountLockoutUntil) - new Date()) / 60000);
-      console.log(`❌ Account locked for ${email} (${minutes} minutes remaining)`);
-      throw new Error(`Account temporarily locked. Try again in ${minutes} minutes.`);
-    }
-
-    const otpDoc = await OTP.findOne({ email: emailLower });
-
-    if (!otpDoc) {
-      console.log(`❌ No OTP found for ${email}`);
-      return false;
-    }
-
-    // Check if OTP expired
-    if (new Date(otpDoc.expiresAt) < new Date()) {
-      console.log(`❌ OTP expired for ${email}`);
-      await OTP.deleteOne({ otpId: otpDoc.otpId });
-      return false;
-    }
-
-    // Check per-OTP attempts
-    if (otpDoc.attempts >= otpDoc.maxAttempts) {
-      console.log(`❌ Max attempts exceeded for ${email} on this OTP`);
-      await OTP.deleteOne({ otpId: otpDoc.otpId });
-
-      // Increment account-level failed attempts
-      if (user) {
-        const newFailedAttempts = (user.failedOtpAttempts || 0) + 1;
-
-        // Lock account after 10 failed attempts across all OTPs
-        if (newFailedAttempts >= 10) {
-          await User.update(user.userId, {
-            failedOtpAttempts: newFailedAttempts,
-            accountLockoutUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString()
-          });
-          console.log(`🔒 Account locked for ${email} after 10 failed OTP attempts`);
-          throw new Error('Account temporarily locked due to too many failed attempts. Try again in 1 hour.');
-        }
-
-        await User.update(user.userId, { failedOtpAttempts: newFailedAttempts });
-      }
-      return false;
-    }
-
-    // Verify OTP
-    if (otpDoc.otp !== otp) {
-      await OTP.update(otpDoc.otpId, { attempts: otpDoc.attempts + 1 });
-
-      // Increment account-level counter
-      if (user) {
-        const newFailedAttempts = (user.failedOtpAttempts || 0) + 1;
-        if (newFailedAttempts >= 10) {
-          await User.update(user.userId, {
-            failedOtpAttempts: newFailedAttempts,
-            accountLockoutUntil: new Date(Date.now() + 60 * 60 * 1000).toISOString()
-          });
-          console.log(`🔒 Account locked for ${email} after 10 failed OTP attempts`);
-          throw new Error('Account temporarily locked due to too many failed attempts. Try again in 1 hour.');
-        }
-        await User.update(user.userId, { failedOtpAttempts: newFailedAttempts });
-      }
-
-      console.log(`❌ Invalid OTP for ${email} (Attempt ${otpDoc.attempts + 1}/${otpDoc.maxAttempts})`);
-      return false;
-    }
-
-    // OTP verified successfully - reset failed attempts counter
-    if (user) {
-      await User.update(user.userId, {
-        failedOtpAttempts: 0,
-        accountLockoutUntil: null
-      });
-    }
-
-    console.log(`✓ OTP verified for ${email}`);
-    await OTP.deleteOne({ otpId: otpDoc.otpId });
-    return true;
-  } catch (error) {
-    console.error('❌ Error verifying OTP:', error.message);
-    throw error;
+  const user = await User.findByEmail(emailLower);
+  if (user?.accountLockoutUntil && new Date(user.accountLockoutUntil) > new Date()) {
+    const minutes = Math.ceil((new Date(user.accountLockoutUntil) - new Date()) / 60000);
+    throw new Error(`Account temporarily locked. Try again in ${minutes} minutes.`);
   }
+
+  const otpDoc = await OTP.findOne({ email: emailLower });
+  if (!otpDoc) return false;
+
+  if (new Date(otpDoc.expiresAt) < new Date()) {
+    await OTP.deleteOne({ otpId: otpDoc.otpId });
+    return false;
+  }
+
+  const attempt = await OTP.consumeAttempt(otpDoc.otpId);
+  if (!attempt) {
+    await OTP.deleteOne({ otpId: otpDoc.otpId });
+    await recordFailure(User, user);
+    return false;
+  }
+
+  if (!matches(otpDoc.otp, hashOTP(emailLower, String(otp ?? '')))) {
+    await recordFailure(User, user);
+    return false;
+  }
+
+  const { deletedCount } = await OTP.deleteOne({ otpId: otpDoc.otpId });
+  if (deletedCount !== 1) return false; // already used by a concurrent request
+
+  if (user) {
+    await User.update(user.userId, { failedOtpAttempts: 0, accountLockoutUntil: null });
+  }
+  return true;
 }
 
 export default {
   generateOTP,
   sendOTPViaEmail,
   generateAndSaveOTP,
-  verifyOTP
+  verifyOTP,
 };
