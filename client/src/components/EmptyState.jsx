@@ -1,66 +1,93 @@
-import React from 'react';
+import React, { Suspense, lazy } from 'react';
 import { Icon } from './ui/Icon';
-import { SecureCoreHero } from './SecureCoreHero';
+import { Button } from './ui/Button';
+
+// three.js is ~600KB and only decorates this one state — keep it out of the
+// initial bundle.
+const SecureCoreHero = lazy(() =>
+  import('./SecureCoreHero').then(m => ({ default: m.SecureCoreHero }))
+);
+
+const CONFIGS = {
+  noConversations: {
+    icon: 'forum',
+    title: 'No conversations yet',
+    description: 'Add a contact by email, then start a conversation with them.',
+    actionLabel: 'Add a contact',
+    actionIcon: 'person_add',
+  },
+  noMessages: {
+    icon: 'waving_hand',
+    title: 'Say hello',
+    description: 'This is the beginning of your conversation. Messages are encrypted before they leave your device.',
+  },
+  noContacts: {
+    icon: 'person_add',
+    title: 'No contacts yet',
+    description: 'Add someone by their email address to start talking.',
+  },
+  noResults: {
+    icon: 'search_off',
+    title: 'No matches',
+    description: 'No conversations or contacts match that search.',
+  },
+  error: {
+    icon: 'error',
+    title: 'Something went wrong',
+    description: 'We could not load this right now. Check your connection and try again.',
+    actionLabel: 'Try again',
+    actionIcon: 'refresh',
+  },
+  offline: {
+    icon: 'cloud_off',
+    title: 'You are offline',
+    description: 'Messages will send once your connection is back.',
+  },
+};
 
 export const EmptyState = ({ type, onAction }) => {
-  const configs = {
-    noConversations: {
-      icon: 'forum',
-      title: 'No conversations yet',
-      description: 'Start a conversation by adding a contact or searching for users',
-      actionLabel: 'Add Contact',
-      actionIcon: 'add',
-    },
-    noMessages: {
-      icon: 'waving_hand',
-      title: 'No messages yet',
-      description: 'Start the conversation by sending a message',
-      actionLabel: 'Send Message',
-      actionIcon: 'send',
-    },
-    noContacts: {
-      icon: 'person_add',
-      title: 'No contacts yet',
-      description: 'Add your first contact by email to get started',
-      actionLabel: 'Add Contact',
-      actionIcon: 'add',
-    },
-  };
-
   if (type === 'selectConversation') {
     return (
       <div className="flex-1 flex flex-col items-center justify-center text-center p-xl relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.03] pointer-events-none" style={{ backgroundImage: 'radial-gradient(#4be277 1px, transparent 1px)', backgroundSize: '24px 24px' }} />
-        <div className="w-full h-64 md:h-80 max-w-lg relative mb-xl animate-fade-in-up">
-          <SecureCoreHero />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 pointer-events-none opacity-[0.5]"
+          style={{ background: 'radial-gradient(32rem 18rem at 50% 30%, rgb(212 154 174 / 0.22), transparent 70%)' }}
+        />
+        <div
+          className="w-full h-56 md:h-72 max-w-lg relative mb-lg animate-fade-in-up"
+          style={{
+            maskImage: 'radial-gradient(closest-side, #000 65%, transparent)',
+            WebkitMaskImage: 'radial-gradient(closest-side, #000 65%, transparent)',
+          }}
+        >
+          <Suspense fallback={null}>
+            <SecureCoreHero />
+          </Suspense>
         </div>
         <div className="z-10 max-w-md animate-fade-in-up">
-          <h2 className="font-headline-lg text-headline-lg font-bold text-on-surface mb-md">Secure Channel Ready</h2>
-          <p className="text-body-lg text-on-surface-variant">
-            Select a conversation from the sidebar to start messaging. All data remains end-to-end encrypted.
+          <h2 className="text-display-md font-display text-content mb-sm text-balance">
+            Your conversations, kept close
+          </h2>
+          <p className="text-body-lg text-content-secondary text-pretty">
+            Pick a conversation to pick up where you left off, or add a contact to start a new one.
           </p>
         </div>
       </div>
     );
   }
 
-  const config = configs[type] || configs.noConversations;
+  const config = CONFIGS[type] || CONFIGS.noConversations;
 
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-4 py-12 text-center">
-      <div className="w-16 h-16 rounded-full bg-surface-container-high flex items-center justify-center mb-4">
-        <Icon name={config.icon} className="text-primary text-[32px]" />
+    <div className="flex-1 flex flex-col items-center justify-center px-md py-2xl text-center">
+      <div className="w-16 h-16 rounded-2xl bg-surface-accent flex items-center justify-center mb-md">
+        <Icon name={config.icon} className="text-primary text-[30px]" />
       </div>
-      <h3 className="text-lg md:text-xl font-semibold text-on-surface mb-2">{config.title}</h3>
-      <p className="text-sm md:text-base text-on-surface-variant max-w-sm mb-6">{config.description}</p>
+      <h3 className="text-title-lg font-display text-content mb-xs">{config.title}</h3>
+      <p className="text-body-md text-content-secondary max-w-xs mb-lg text-pretty">{config.description}</p>
       {config.actionLabel && onAction && (
-        <button
-          onClick={onAction}
-          className="flex items-center gap-2 px-4 md:px-6 py-2 md:py-2.5 bg-primary-container hover:bg-primary-container/90 text-on-primary-container font-semibold rounded-lg transition-colors min-h-[40px]"
-        >
-          <Icon name={config.actionIcon} className="text-[20px]" />
-          {config.actionLabel}
-        </button>
+        <Button onClick={onAction} icon={config.actionIcon}>{config.actionLabel}</Button>
       )}
     </div>
   );

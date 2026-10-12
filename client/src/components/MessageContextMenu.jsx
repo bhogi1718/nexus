@@ -1,71 +1,48 @@
-import React, { useEffect, useRef } from 'react';
+import React from 'react';
 import { Icon } from './ui/Icon';
+import { Modal } from './ui/Modal';
+import { useToast } from './ui/Toast';
 
-export const MessageContextMenu = ({ message, isCurrentUser, onClose, onCopy, onDelete }) => {
-  const menuRef = useRef(null);
+const Action = ({ icon, label, onClick, danger = false }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    className={`w-full px-md py-3.5 min-h-[52px] text-left flex items-center gap-sm transition-colors duration-fast
+      ${danger ? 'text-danger hover:bg-danger-subtle' : 'text-content hover:bg-surface-sunken'}`}
+  >
+    <Icon name={icon} className="text-[22px] flex-shrink-0" />
+    <span className="text-title-sm">{label}</span>
+  </button>
+);
 
-  useEffect(() => {
-    const handleClickOutside = (e) => {
-      if (menuRef.current && !menuRef.current.contains(e.target)) {
-        onClose();
-      }
-    };
+export const MessageContextMenu = ({ message, isCurrentUser, onClose, onDelete }) => {
+  const toast = useToast();
+  const canCopy = Boolean(message.content) && !message.undecryptable && !message.fileUrl;
 
-    document.addEventListener('click', handleClickOutside);
-    return () => document.removeEventListener('click', handleClickOutside);
-  }, [onClose]);
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(message.content);
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      toast.success('Message copied');
+    } catch {
+      toast.error('Could not copy to clipboard');
+    }
     onClose();
   };
 
+  const preview = message.fileUrl ? (message.fileName || 'Attachment') : message.content;
+
   return (
-    <div
-      ref={menuRef}
-      className="fixed bottom-0 left-0 right-0 bg-surface-container-high border-t border-outline-variant rounded-t-xl shadow-2xl z-50 animate-sheet-slide-up"
-    >
-      <div className="flex justify-between items-center p-4 border-b border-outline-variant">
-        <h3 className="text-sm font-semibold text-on-surface">Message Options</h3>
-        <button
-          onClick={onClose}
-          aria-label="Close"
-          className="p-1 rounded-lg text-on-surface-variant hover:bg-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        >
-          <Icon name="close" className="text-[20px]" />
-        </button>
+    <Modal isOpen onClose={onClose} padded={false} label="Message options">
+      {preview && !message.undecryptable && (
+        <p className="px-md pt-sm pb-3 text-body-md text-content-secondary line-clamp-3 border-b border-border">
+          {preview}
+        </p>
+      )}
+      <div className="divide-y divide-border">
+        {canCopy && <Action icon="content_copy" label="Copy text" onClick={handleCopy} />}
+        {isCurrentUser && <Action icon="delete" label="Delete for me" onClick={onDelete} danger />}
+        <Action icon="close" label="Cancel" onClick={onClose} />
       </div>
-
-      <div className="divide-y divide-outline-variant">
-        {message.content && (
-          <button
-            onClick={handleCopy}
-            className="w-full px-4 py-3 text-left text-sm hover:bg-background transition-colors flex items-center gap-3"
-          >
-            <Icon name="content_copy" className="text-primary text-[20px] flex-shrink-0" />
-            <span className="text-on-surface font-medium">Copy</span>
-          </button>
-        )}
-
-        {isCurrentUser && (
-          <button
-            onClick={onDelete}
-            className="w-full px-4 py-3 text-left text-sm hover:bg-error/10 transition-colors flex items-center gap-3"
-          >
-            <Icon name="delete" className="text-error text-[20px] flex-shrink-0" />
-            <span className="text-on-surface font-medium">Delete</span>
-          </button>
-        )}
-      </div>
-
-      <div className="p-2">
-        <button
-          onClick={onClose}
-          className="w-full px-4 py-2.5 text-center text-sm font-medium text-on-surface-variant hover:bg-background rounded-lg transition-colors"
-        >
-          Cancel
-        </button>
-      </div>
-    </div>
+    </Modal>
   );
 };

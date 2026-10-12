@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
 import { initializeSocket, disconnectSocket } from '../services/socket';
-import { storeKeys } from '../services/cryptoService';
+import { storeKeys, clearKeys } from '../services/cryptoService';
 
 export const AuthContext = createContext();
 
@@ -23,9 +23,13 @@ export const AuthProvider = ({ children }) => {
           }
           initializeSocket(accessToken);
         } catch (error) {
-          localStorage.removeItem('accessToken');
-          localStorage.removeItem('refreshToken');
-          setAccessToken(null);
+          // Only a rejected session should sign the user out. A network blip or
+          // server hiccup during page load must not throw away valid tokens.
+          if (error.response?.status === 401 || error.response?.status === 403) {
+            localStorage.removeItem('accessToken');
+            localStorage.removeItem('refreshToken');
+            setAccessToken(null);
+          }
         }
       }
       setLoading(false);
@@ -74,12 +78,16 @@ export const AuthProvider = ({ children }) => {
     disconnectSocket();
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
+    // Keys must not survive logout, or they leak into the next account on a shared browser.
+    clearKeys();
     setAccessToken(null);
     setUser(null);
   };
 
+  const updateUser = (patch) => setUser(prev => (prev ? { ...prev, ...patch } : prev));
+
   return (
-    <AuthContext.Provider value={{ user, loading, accessToken, register, login, loginWithToken, logout }}>
+    <AuthContext.Provider value={{ user, loading, accessToken, register, login, loginWithToken, logout, updateUser }}>
       {children}
     </AuthContext.Provider>
   );

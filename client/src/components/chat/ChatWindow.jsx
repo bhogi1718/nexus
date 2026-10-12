@@ -20,12 +20,12 @@ export const ChatWindow = ({
   user,
   displayName,
   onMessageLongPress,
+  onRetryMessage,
   typingUsers,
   messageInput,
   onMessageInputChange,
   onSendMessage,
   fileInputRef,
-  error,
   onUploadSuccess,
   dragDrop, // { isDragging, onDragEnter, onDragLeave, onDragOver, onDrop } — desktop only
 }) => {
@@ -75,6 +75,7 @@ export const ChatWindow = ({
         onBack={isMobile ? onBack : undefined}
         onClose={!isMobile ? onBack : undefined}
         user={user}
+        isTyping={typingUsers.length > 0}
       />
 
       <div className="relative flex-1 flex flex-col min-h-0">
@@ -85,57 +86,66 @@ export const ChatWindow = ({
           onDragLeave={!isMobile ? dragDrop?.onDragLeave : undefined}
           onDragOver={!isMobile ? dragDrop?.onDragOver : undefined}
           onDrop={!isMobile ? dragDrop?.onDrop : undefined}
-          className={`flex-1 overflow-y-auto bg-background flex flex-col ${isMobile ? 'p-3 space-y-2.5' : 'p-3 md:p-6 space-y-2.5 md:space-y-4'}`}
+          className="flex-1 overflow-y-auto bg-bg"
         >
           {!isMobile && dragDrop?.isDragging && (
-            <div className="absolute inset-0 bg-primary/10 border-2 border-dashed border-primary rounded-xl flex items-center justify-center z-40 pointer-events-none">
-              <Icon name="add" className="text-primary text-[64px] mx-auto mb-2" />
+            <div className="absolute inset-3 z-40 pointer-events-none rounded-2xl border-2 border-dashed border-accent-strong bg-surface-accent/70 backdrop-blur-sm flex flex-col items-center justify-center gap-sm animate-fade-in">
+              <span className="w-14 h-14 rounded-2xl bg-surface shadow-md flex items-center justify-center">
+                <Icon name="upload" className="text-primary text-[30px]" />
+              </span>
+              <p className="text-title-md text-content">Drop to share</p>
             </div>
           )}
 
-          {loadingMessages ? (
-            <>
-              <SkeletonMessage isCurrentUser={false} />
-              <SkeletonMessage isCurrentUser={true} />
-              <SkeletonMessage isCurrentUser={false} />
-              <SkeletonMessage isCurrentUser={true} />
-            </>
-          ) : messages.length === 0 ? (
-            <EmptyState type="noMessages" />
-          ) : (
-            <>
-              {timeline.map(item => {
-                if (item.type === 'date') {
-                  return <DateSeparator key={item.key} label={item.label} />;
-                }
-                const message = item.message;
-                const senderId = message.sender?._id || message.sender?.id;
-                const isCurrentUser = String(senderId) === String(user?.id);
-                return (
-                  <MessageBubble
-                    key={item.key}
-                    message={message}
-                    isCurrentUser={isCurrentUser}
-                    displayName={displayName(message.sender)}
-                    user={user}
-                    onLongPress={onMessageLongPress}
-                    isFirstInGroup={item.isFirstInGroup}
-                    isLastInGroup={item.isLastInGroup}
-                  />
-                );
-              })}
-              {typingUsers.length > 0 && <TypingIndicator />}
-              <div ref={messagesEndRef} />
-            </>
-          )}
+          {/* Spacing between messages is owned by MessageBubble's grouping margins,
+              so the container adds none — that is what keeps runs tight. */}
+          <div className="max-w-reading mx-auto w-full px-sm md:px-lg py-md min-h-full flex flex-col">
+            {loadingMessages ? (
+              <div className="space-y-3 pt-sm">
+                <SkeletonMessage isCurrentUser={false} />
+                <SkeletonMessage isCurrentUser={true} />
+                <SkeletonMessage isCurrentUser={false} />
+                <SkeletonMessage isCurrentUser={true} />
+              </div>
+            ) : messages.length === 0 ? (
+              <EmptyState type="noMessages" />
+            ) : (
+              <div className="mt-auto">
+                {timeline.map(item => {
+                  if (item.type === 'date') {
+                    return <DateSeparator key={item.key} label={item.label} />;
+                  }
+                  const message = item.message;
+                  const senderId = message.sender?._id || message.sender?.id;
+                  const isCurrentUser = String(senderId) === String(user?.id);
+                  return (
+                    <MessageBubble
+                      key={item.key}
+                      message={message}
+                      isCurrentUser={isCurrentUser}
+                      displayName={displayName(message.sender)}
+                      user={user}
+                      onLongPress={onMessageLongPress}
+                      onRetry={onRetryMessage}
+                      isFirstInGroup={item.isFirstInGroup}
+                      isLastInGroup={item.isLastInGroup}
+                    />
+                  );
+                })}
+                {typingUsers.length > 0 && <TypingIndicator />}
+              </div>
+            )}
+            <div ref={messagesEndRef} />
+          </div>
         </div>
 
         {showNewMessagesPill && (
           <button
+            type="button"
             onClick={scrollToBottom}
-            className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-3 py-1.5 bg-primary-container text-on-primary-container text-xs font-medium rounded-full shadow-lg hover:bg-primary-container/90 transition-colors animate-fade-in"
+            className="absolute bottom-md left-1/2 -translate-x-1/2 flex items-center gap-1.5 pl-3.5 pr-2.5 py-2 bg-primary text-content-on-primary text-caption font-semibold rounded-full shadow-lg hover:bg-primary-hover transition-all active:scale-95 animate-fade-in-up"
           >
-            New messages <Icon name="expand_more" className="text-[16px]" />
+            New messages <Icon name="arrow_downward" className="text-[16px]" />
           </button>
         )}
       </div>
@@ -145,7 +155,6 @@ export const ChatWindow = ({
         onChange={onMessageInputChange}
         onSubmit={onSendMessage}
         fileInputRef={fileInputRef}
-        error={error}
         conversationId={conversation?._id}
         onUploadSuccess={onUploadSuccess}
       />

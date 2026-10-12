@@ -1,20 +1,40 @@
-import React from 'react';
+import React, { useState } from 'react';
+import { Avatar } from '../ui/Avatar';
+import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Icon } from '../ui/Icon';
+import { IconButton } from '../ui/IconButton';
 
-export const ContactListItem = ({ contact, onMessage, onRemove }) => (
-  <div className="flex items-center gap-3 p-4 border-b border-outline-variant hover:bg-surface-container-high">
-    <div className="w-10 h-10 bg-primary-container rounded-full flex items-center justify-center text-on-primary-container font-bold flex-shrink-0">
-      {contact.name?.charAt(0).toUpperCase() || '?'}
-    </div>
-    <div className="flex-1 min-w-0">
-      <p className="font-semibold text-on-surface text-sm truncate">{contact.nickname || contact.name}</p>
-      <p className="text-xs text-on-surface-variant truncate">{contact.email}</p>
-    </div>
-    <button onClick={onMessage} aria-label="Message contact" className="p-2 rounded-lg text-primary hover:bg-primary/10 transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-      <Icon name="chat" className="text-[18px]" />
-    </button>
-    <button onClick={onRemove} aria-label="Remove contact" className="p-2 rounded-lg text-error hover:bg-error/10 transition-colors flex-shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary">
-      <Icon name="person_remove" className="text-[18px]" />
-    </button>
-  </div>
-);
+export const ContactListItem = ({ contact, onMessage, onRemove }) => {
+  const [confirmRemove, setConfirmRemove] = useState(false);
+  const displayName = contact.nickname || contact.name;
+
+  return (
+    <>
+      <div className="flex items-center gap-sm px-md py-3 min-h-[68px] transition-colors duration-fast hover:bg-surface-sunken">
+        <Avatar name={contact.name} src={contact.avatar} size="md" showStatus isOnline={contact.isOnline} />
+
+        <div className="flex-1 min-w-0">
+          <p className="text-title-sm text-content truncate">{displayName}</p>
+          <p className="text-body-sm text-content-muted truncate">{contact.email}</p>
+        </div>
+
+        <IconButton label={`Message ${displayName}`} variant="accent" onClick={onMessage}>
+          <Icon name="chat_bubble" className="text-[20px]" />
+        </IconButton>
+        <IconButton label={`Remove ${displayName}`} variant="danger" onClick={() => setConfirmRemove(true)}>
+          <Icon name="person_remove" className="text-[20px]" />
+        </IconButton>
+      </div>
+
+      <ConfirmDialog
+        isOpen={confirmRemove}
+        onClose={() => setConfirmRemove(false)}
+        onConfirm={() => { setConfirmRemove(false); onRemove(); }}
+        title={`Remove ${displayName}?`}
+        message="They'll be removed from your contacts. You can add them again at any time with their email address."
+        confirmLabel="Remove"
+        danger
+      />
+    </>
+  );
+};

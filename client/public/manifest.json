@@ -1,48 +1,33 @@
 {
-  "name": "Nexus Messenger",
+  "name": "Nexus — Private Messaging",
   "short_name": "Nexus",
-  "description": "Real-time messaging app with end-to-end encryption",
-  "start_url": "/",
+  "description": "Private messaging, designed for people who value their conversations.",
+  "start_url": "/chat",
   "display": "standalone",
-  "background_color": "#0e150e",
-  "theme_color": "#0e150e",
+  "background_color": "#FBF4F6",
+  "theme_color": "#FBF4F6",
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230e150e' width='192' height='192'/><rect x='16' y='16' width='160' height='160' rx='32' fill='%2322c55e'/><text x='96' y='120' font-size='90' font-weight='bold' text-anchor='middle' fill='%230e150e' font-family='Arial'>N</text></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%233E2A3A' width='192' height='192' rx='44'/><text x='96' y='128' font-size='96' font-weight='600' text-anchor='middle' fill='%23F2D7DC' font-family='Georgia,serif'>N</text></svg>",
       "sizes": "192x192",
       "type": "image/svg+xml",
       "purpose": "any"
     },
     {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%230e150e' width='512' height='512'/><rect x='40' y='40' width='432' height='432' rx='96' fill='%2322c55e'/><text x='256' y='330' font-size='240' font-weight='bold' text-anchor='middle' fill='%230e150e' font-family='Arial'>N</text></svg>",
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect fill='%233E2A3A' width='512' height='512'/><text x='256' y='340' font-size='256' font-weight='600' text-anchor='middle' fill='%23F2D7DC' font-family='Georgia,serif'>N</text></svg>",
       "sizes": "512x512",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }
   ],
   "categories": ["productivity", "social"],
-  "screenshots": [
-    {
-      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 540 720'><rect fill='%230e150e' width='540' height='720'/><rect fill='%231a221a' width='540' height='60'/><text x='270' y='40' font-size='24' font-weight='bold' text-anchor='middle' fill='%234be277' font-family='Arial'>Nexus</text></svg>",
-      "sizes": "540x720",
-      "type": "image/svg+xml",
-      "form_factor": "narrow"
-    }
-  ],
   "shortcuts": [
     {
       "name": "New Chat",
       "short_name": "Chat",
       "description": "Start a new conversation",
-      "url": "/chat",
-      "icons": [
-        {
-          "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 96 96'><circle cx='48' cy='48' r='48' fill='%2322c55e'/><path d='M48 20c-15.4 0-28 10.2-28 22.8 0 6.2 2.8 12 7.6 16.2L25 72l20-11c3.6 1 7.6 1.6 11.8 1.6 15.4 0 28-10.2 28-22.8S63.4 20 48 20z' fill='%230e150e'/></svg>",
-          "sizes": "96x96",
-          "type": "image/svg+xml"
-        }
-      ]
+      "url": "/chat"
     }
   ]
 }

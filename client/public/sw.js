@@ -1,9 +1,11 @@
-const CACHE_NAME = 'nexus-v2';
+const CACHE_NAME = 'nexus-v3';
 const URLS_TO_CACHE = [
   '/manifest.json',
 ];
 
 self.addEventListener('install', (event) => {
+  // Replace a previous worker immediately rather than waiting for every tab to close.
+  self.skipWaiting();
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
       return cache.addAll(URLS_TO_CACHE).catch(() => {
@@ -23,7 +25,7 @@ self.addEventListener('activate', (event) => {
           }
         })
       );
-    })
+    }).then(() => self.clients.claim())
   );
 });
 
@@ -33,17 +35,10 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // Skip API calls - always fetch from network
-  if (event.request.url.includes('/api/') || event.request.url.includes('localhost:5000')) {
-    event.respondWith(
-      fetch(event.request).catch(() => {
-        // Return offline response if network fails
-        return new Response(
-          JSON.stringify({ error: 'Offline' }),
-          { status: 503, headers: { 'Content-Type': 'application/json' } }
-        );
-      })
-    );
+  // Leave API and cross-origin traffic entirely to the browser. Intercepting it
+  // only to synthesise a 503 on failure hid the real network error from the app.
+  const url = new URL(event.request.url);
+  if (url.origin !== self.location.origin || url.pathname.startsWith('/api/')) {
     return;
   }
 

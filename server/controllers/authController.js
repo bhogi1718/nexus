@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs';
 import User from '../models/User.js';
+import { sanitizeInput } from '../services/sanitizationService.js';
 import { generateAndSaveOTP, verifyOTP } from '../services/emailOtpService.js';
 import { generateTokens, verifyRefreshToken } from '../services/tokenService.js';
 
@@ -271,6 +272,55 @@ export const getProfile = async (req, res) => {
     });
   } catch (error) {
     console.error('Auth error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
+// Update the caller's own display name / status
+export const updateProfile = async (req, res) => {
+  try {
+    const { name, status } = req.body;
+    const updates = {};
+
+    if (name !== undefined) {
+      const trimmed = String(name).trim();
+      if (trimmed.length < 2 || trimmed.length > 50) {
+        return res.status(400).json({ message: 'Name must be between 2 and 50 characters' });
+      }
+      updates.name = sanitizeInput(trimmed);
+    }
+
+    if (status !== undefined) {
+      const trimmed = String(status).trim();
+      if (trimmed.length > 140) {
+        return res.status(400).json({ message: 'Status must be 140 characters or fewer' });
+      }
+      updates.status = sanitizeInput(trimmed);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.status(400).json({ message: 'Nothing to update' });
+    }
+
+    const user = await User.update(req.userId, updates);
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    res.status(200).json({
+      message: 'Profile updated',
+      user: {
+        id: user.userId,
+        name: user.name,
+        email: user.email,
+        avatar: user.avatar,
+        status: user.status,
+        publicKey: user.publicKey,
+        secretKey: user.secretKey
+      }
+    });
+  } catch (error) {
+    console.error('Update profile error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 };

@@ -23,12 +23,16 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
   const fileInputRef = useRef(null);
   const selectedConversationRef = useRef(null);
   const activeConversationRef = useRef(null);
+  // Unsent text per conversation, so switching chats doesn't lose a half-typed message.
+  const draftsRef = useRef({});
 
   const loadMessages = async (conversationId) => {
     try {
       if (selectedConversation) {
+        draftsRef.current[selectedConversation] = messageInput;
         leaveConversation(selectedConversation);
       }
+      setMessageInput(draftsRef.current[conversationId] || '');
 
       setLoadingMessages(true);
       const response = await chatAPI.getMessages(conversationId);
@@ -64,13 +68,24 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
   };
 
   const handleSendMessage = async (e) => {
-    e.preventDefault();
+    e?.preventDefault();
     if (!messageInput.trim() || !selectedConversation) return;
 
     const messageContent = messageInput;
     setMessageInput('');
+    delete draftsRef.current[selectedConversation];
     stopTyping(selectedConversation);
+    await sendContent(messageContent);
+  };
 
+  // A failed bubble stays in the thread marked "Not sent"; retrying removes it
+  // and sends the same text again.
+  const retryMessage = async (failedMessage) => {
+    setMessages(prev => prev.filter(m => m._id !== failedMessage._id));
+    await sendContent(failedMessage.content);
+  };
+
+  const sendContent = async (messageContent) => {
     try {
       const socket = getSocket();
       if (!socket?.connected) {
@@ -118,9 +133,10 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
       try {
         await sendMessage(selectedConversation, contentToSend);
       } catch (err) {
-        setMessages(prev => prev.filter(m => m._id !== optimisticMessage._id));
-        setError(err.message || 'Failed to send message');
-        setMessageInput(messageContent);
+        setMessages(prev => prev.map(m =>
+          m._id === optimisticMessage._id ? { ...m, isOptimistic: false, failed: true } : m
+        ));
+        setError(err.message || 'Message not sent. Tap it to try again.');
       }
     } catch (err) {
       setError(err.message || 'Failed to send message');
@@ -253,6 +269,7 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
     isDragging,
     loadMessages,
     handleSendMessage,
+    retryMessage,
     handleMessageInputChange,
     handleMediaUploadSuccess,
     handleDragEnter, handleDragLeave, handleDragOver, handleDrop,

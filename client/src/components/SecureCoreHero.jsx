@@ -24,11 +24,11 @@ export const SecureCoreHero = () => {
 
     const geometry = new THREE.IcosahedronGeometry(2, 1);
     const material = new THREE.MeshPhongMaterial({
-      color: 0x22c55e,
+      color: 0xA8788E,
       wireframe: true,
       transparent: true,
       opacity: 0.8,
-      emissive: 0x22c55e,
+      emissive: 0xA8788E,
       emissiveIntensity: 0.5,
     });
     const core = new THREE.Mesh(geometry, material);
@@ -36,17 +36,17 @@ export const SecureCoreHero = () => {
 
     const innerGeometry = new THREE.IcosahedronGeometry(1.2, 0);
     const innerMaterial = new THREE.MeshBasicMaterial({
-      color: 0x22c55e,
+      color: 0xA8788E,
       transparent: true,
       opacity: 0.2,
     });
     const innerCore = new THREE.Mesh(innerGeometry, innerMaterial);
     scene.add(innerCore);
 
-    const light = new THREE.PointLight(0x22c55e, 2, 100);
+    const light = new THREE.PointLight(0xA8788E, 2, 100);
     light.position.set(5, 5, 5);
     scene.add(light);
-    scene.add(new THREE.AmbientLight(0x404040));
+    scene.add(new THREE.AmbientLight(0xD49AAE, 1.2));
 
     let mouseX = 0;
     let mouseY = 0;

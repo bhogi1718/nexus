@@ -15,6 +15,7 @@ const FRAGMENT_SHADER = `
   uniform float u_time;
   uniform vec2 u_resolution;
   uniform vec2 u_mouse;
+  uniform float u_dark;
   varying vec2 v_texCoord;
 
   float hash(vec2 p) {
@@ -37,8 +38,8 @@ const FRAGMENT_SHADER = `
     float dist = distance(uv, mouse);
     float highlight = smoothstep(0.3, 0.0, dist) * 0.5;
 
-    vec3 bgColor = vec3(0.035, 0.051, 0.035);
-    vec3 accentColor = vec3(0.133, 0.773, 0.369);
+    vec3 bgColor = u_dark > 0.5 ? vec3(0.141, 0.094, 0.129) : vec3(0.984, 0.957, 0.965);
+    vec3 accentColor = u_dark > 0.5 ? vec3(0.831, 0.604, 0.682) : vec3(0.659, 0.471, 0.557);
 
     float grid = (step(0.95, fpos.x) + step(0.95, fpos.y)) * 0.1;
     float dataDots = step(0.98, h) * pulse;
@@ -79,6 +80,7 @@ export const ShaderBackground = () => {
     const timeLocation = gl.getUniformLocation(program, 'u_time');
     const resolutionLocation = gl.getUniformLocation(program, 'u_resolution');
     const mouseLocation = gl.getUniformLocation(program, 'u_mouse');
+    const darkLocation = gl.getUniformLocation(program, 'u_dark');
 
     let mouseX = 0;
     let mouseY = 0;
@@ -87,6 +89,8 @@ export const ShaderBackground = () => {
       mouseY = e.clientY;
     };
     window.addEventListener('mousemove', handleMouseMove);
+
+    const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)');
 
     let animationFrameId;
     const render = (time) => {
@@ -98,18 +102,30 @@ export const ShaderBackground = () => {
       gl.enableVertexAttribArray(positionLocation);
       gl.vertexAttribPointer(positionLocation, 2, gl.FLOAT, false, 0, 0);
 
-      gl.uniform1f(timeLocation, time * 0.001);
+      // Freeze the clock when the user prefers reduced motion; still renders once.
+      gl.uniform1f(timeLocation, reducedMotion.matches ? 0 : time * 0.001);
       gl.uniform2f(resolutionLocation, canvas.width, canvas.height);
       gl.uniform2f(mouseLocation, mouseX, canvas.height - mouseY);
+      gl.uniform1f(darkLocation, document.documentElement.classList.contains('dark') ? 1 : 0);
 
       gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+
+      // Don't burn frames while the tab is hidden or motion is reduced.
+      if (reducedMotion.matches || document.hidden) return;
       animationFrameId = requestAnimationFrame(render);
     };
     animationFrameId = requestAnimationFrame(render);
 
+    const handleVisibility = () => {
+      cancelAnimationFrame(animationFrameId);
+      if (!document.hidden) animationFrameId = requestAnimationFrame(render);
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
     return () => {
       cancelAnimationFrame(animationFrameId);
       window.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('visibilitychange', handleVisibility);
       gl.deleteProgram(program);
       gl.deleteBuffer(positionBuffer);
     };
@@ -118,7 +134,7 @@ export const ShaderBackground = () => {
   return (
     <canvas
       ref={canvasRef}
-      className="fixed inset-0 -z-10 w-full h-full opacity-40 pointer-events-none"
+      className="fixed inset-0 -z-10 w-full h-full opacity-[0.55] pointer-events-none"
       aria-hidden="true"
     />
   );

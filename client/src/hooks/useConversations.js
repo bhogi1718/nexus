@@ -173,12 +173,11 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
     }
   };
 
-  const handleOpenProfile = async () => {
+  const loadContacts = async () => {
     setLoadingContacts(true);
     try {
       const response = await chatAPI.getContacts();
       setContacts(response.data.contacts || []);
-      setActiveTab('profile');
     } catch (err) {
       console.error('Failed to load contacts:', err);
       setContacts([]);
@@ -186,6 +185,8 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
       setLoadingContacts(false);
     }
   };
+
+  const handleOpenProfile = () => setActiveTab('profile');
 
   const handleRemoveContact = async (contactId) => {
     try {
@@ -260,6 +261,7 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
     handleAddContact,
     handleAddUnknownContact,
     handleOpenProfile,
+    loadContacts,
     handleRemoveContact,
     handleDeleteConversation,
     getConversationName,

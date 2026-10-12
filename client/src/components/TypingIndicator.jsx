@@ -1,14 +1,16 @@
 import React from 'react';
 
-export const TypingIndicator = () => {
-  return (
-    <div className="flex items-center gap-1 px-3 md:px-4 py-1 md:py-2 text-on-surface-variant text-xs md:text-sm">
-      <span className="flex gap-1">
-        <span className="w-1 md:w-2 h-1 md:h-2 bg-on-surface-variant rounded-full animate-bounce"></span>
-        <span className="w-1 md:w-2 h-1 md:h-2 bg-on-surface-variant rounded-full animate-bounce" style={{ animationDelay: '0.1s' }}></span>
-        <span className="w-1 md:w-2 h-1 md:h-2 bg-on-surface-variant rounded-full animate-bounce" style={{ animationDelay: '0.2s' }}></span>
-      </span>
-      Someone is typing...
+export const TypingIndicator = () => (
+  <div className="flex items-end gap-2 mt-3 animate-bubble-in" role="status" aria-label="Typing">
+    <span className="w-7 flex-shrink-0" aria-hidden="true" />
+    <div className="flex items-center gap-1 px-4 py-3 bg-surface border border-border rounded-[20px] rounded-bl-[6px] shadow-xs">
+      {[0, 160, 320].map(delay => (
+        <span
+          key={delay}
+          className="w-1.5 h-1.5 rounded-full bg-accent-strong animate-bounce"
+          style={{ animationDelay: `${delay}ms`, animationDuration: '1s' }}
+        />
+      ))}
     </div>
-  );
-};
+  </div>
+);

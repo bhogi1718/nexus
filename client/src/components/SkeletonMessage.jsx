@@ -1,19 +1,12 @@
 import React from 'react';
 
-export const SkeletonMessage = ({ isCurrentUser }) => {
-  return (
-    <div className={`flex items-end gap-1 md:gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'} mb-2`}>
-      {!isCurrentUser && (
-        <div className="w-6 md:w-8 h-6 md:h-8 bg-surface-container-high rounded-full flex-shrink-0 animate-pulse" />
-      )}
-      <div className={`max-w-[85%] md:max-w-sm px-3 md:px-4 py-2 md:py-3 rounded-2xl ${
-        isCurrentUser
-          ? 'rounded-br-none'
-          : 'rounded-bl-none'
-      }`}>
-        <div className={`h-4 bg-surface-container-high rounded animate-pulse ${isCurrentUser ? 'w-48' : 'w-40'}`} />
-        <div className={`h-3 bg-surface-container-high rounded animate-pulse mt-2 ${isCurrentUser ? 'w-32' : 'w-28'}`} />
-      </div>
-    </div>
-  );
-};
+// Shape matches MessageBubble so content doesn't jump when it loads in.
+export const SkeletonMessage = ({ isCurrentUser }) => (
+  <div className={`flex items-end gap-2 ${isCurrentUser ? 'justify-end' : 'justify-start'}`} aria-hidden="true">
+    {!isCurrentUser && <div className="w-7 h-7 rounded-full skeleton-shimmer flex-shrink-0" />}
+    <div
+      className={`skeleton-shimmer rounded-[20px] ${isCurrentUser ? 'rounded-br-[6px]' : 'rounded-bl-[6px]'}
+        ${isCurrentUser ? 'w-48 h-12' : 'w-60 h-16'}`}
+    />
+  </div>
+);

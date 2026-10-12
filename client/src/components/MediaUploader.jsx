@@ -1,15 +1,25 @@
 import React, { useRef, useState, forwardRef, useImperativeHandle } from 'react';
 import api from '../services/api';
 import { Icon } from './ui/Icon';
+import { IconButton } from './ui/IconButton';
+import { useToast } from './ui/Toast';
+
+const MAX_BYTES = 50 * 1024 * 1024;
 
 const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, ref) => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [fileName, setFileName] = useState('');
   const fileInputRef = useRef(null);
+  const toast = useToast();
 
   const uploadFile = async (file) => {
     if (!conversationId) {
-      alert('No active conversation. Please select a conversation first.');
+      toast.error('Open a conversation before attaching a file.');
+      return;
+    }
+    if (file.size > MAX_BYTES) {
+      toast.error('Files must be smaller than 50 MB.');
       return;
     }
 
@@ -19,24 +29,15 @@ const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, 
 
     setUploading(true);
     setUploadProgress(0);
+    setFileName(file.name);
 
     try {
-      const response = await api.post(
-        '/chat/upload',
-        formData,
-        {
-          onUploadProgress: (progressEvent) => {
-            try {
-              const progress = Math.round((progressEvent.loaded / progressEvent.total) * 100);
-              setUploadProgress(progress);
-            } catch (err) {
-              console.error('Progress tracking error:', err);
-            }
-          }
-        }
-      );
+      const response = await api.post('/chat/upload', formData, {
+        onUploadProgress: (e) => {
+          if (e.total) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        },
+      });
 
-      // Determine message type based on file MIME type
       let messageType = 'document';
       if (file.type.startsWith('image/')) messageType = 'image';
       else if (file.type.startsWith('video/')) messageType = 'video';
@@ -47,36 +48,23 @@ const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, 
         fileName: response.data.fileName,
         fileSize: response.data.fileSize,
         type: messageType,
-        s3Key: response.data.s3Key
+        s3Key: response.data.s3Key,
       });
-
-      setUploadProgress(0);
     } catch (error) {
-      alert('Upload failed: ' + error.message);
+      toast.error(error.response?.data?.message || 'Upload failed. Please try again.');
     } finally {
       setUploading(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = '';
-      }
+      setUploadProgress(0);
+      if (fileInputRef.current) fileInputRef.current.value = '';
     }
   };
 
-  const handleFileSelect = async (e) => {
+  const handleFileSelect = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-
-    // Check file size (50MB limit)
-    if (file.size > 50 * 1024 * 1024) {
-      alert('File size must be less than 50MB');
-      return;
-    }
-
-    await uploadFile(file);
+    if (file) uploadFile(file);
   };
 
-  useImperativeHandle(ref, () => ({
-    uploadFile: (file) => uploadFile(file)
-  }));
+  useImperativeHandle(ref, () => ({ uploadFile }));
 
   return (
     <div className="relative">
@@ -88,25 +76,32 @@ const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, 
         className="hidden"
         accept="image/*,video/*,.pdf,.doc,.docx,.txt,audio/*"
       />
-      <button
-        type="button"
-        onClick={() => fileInputRef.current?.click()}
-        disabled={uploading}
-        className="p-2 hover:bg-surface-container-high rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
-        title="Attach file"
-        aria-label="Attach file"
-      >
-        <Icon name="attach_file" className="text-on-surface-variant text-[20px]" />
-      </button>
+      <IconButton label="Attach a file" onClick={() => fileInputRef.current?.click()} disabled={uploading}>
+        <Icon
+          name={uploading ? 'progress_activity' : 'add_circle'}
+          className={`text-[24px] ${uploading ? 'animate-spin' : ''}`}
+        />
+      </IconButton>
 
       {uploading && (
-        <div className="absolute bottom-full mb-2 left-0 bg-surface-container-high p-3 rounded-lg shadow-md border border-outline-variant">
-          <p className="text-sm font-medium mb-2 text-on-surface">Uploading... {uploadProgress}%</p>
-          <div className="w-48 h-2 bg-background rounded-full overflow-hidden">
+        <div
+          role="status"
+          className="absolute bottom-full mb-sm left-0 w-64 bg-surface p-sm rounded-xl shadow-lg border border-border animate-fade-in-up"
+        >
+          <div className="flex items-center gap-sm mb-sm">
+            <span className="w-8 h-8 rounded-lg bg-surface-accent flex items-center justify-center flex-shrink-0">
+              <Icon name="upload" className="text-[18px] text-primary" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-body-sm font-medium text-content truncate">{fileName}</span>
+              <span className="block text-caption text-content-muted tabular-nums">Uploading… {uploadProgress}%</span>
+            </span>
+          </div>
+          <div className="h-1.5 bg-surface-sunken rounded-full overflow-hidden">
             <div
-              className="h-full bg-primary transition-all"
+              className="h-full bg-primary rounded-full transition-[width] duration-base ease-enter"
               style={{ width: `${uploadProgress}%` }}
-            ></div>
+            />
           </div>
         </div>
       )}

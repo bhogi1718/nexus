@@ -1,25 +1,37 @@
 <!doctype html>
-<html class="dark" lang="en">
+<html lang="en">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0e150e" />
+    <meta name="theme-color" content="#FBF4F6" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#241821" media="(prefers-color-scheme: dark)" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Nexus" />
-    <meta name="description" content="Real-time messaging app with end-to-end encryption" />
+    <meta name="description" content="Private messaging, designed for people who value their conversations." />
 
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="manifest" href="/manifest.json" />
-    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%2322c55e' width='192' height='192' rx='40'/><circle cx='96' cy='96' r='60' fill='%230e150e'/><text x='96' y='110' font-size='80' font-weight='bold' text-anchor='middle' fill='%2322c55e' font-family='Arial'>N</text></svg>" />
+    <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%233E2A3A' width='192' height='192' rx='44'/><text x='96' y='128' font-size='96' font-weight='600' text-anchor='middle' fill='%23F2D7DC' font-family='Georgia,serif'>N</text></svg>" />
 
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet" />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Playfair+Display:wght@500;600;700&display=swap" rel="stylesheet" />
     <link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&display=swap" rel="stylesheet" />
 
-    <title>Nexus Messenger</title>
+    <script>
+      // Apply the stored theme before first paint so there is no flash.
+      (function () {
+        try {
+          var stored = localStorage.getItem('theme');
+          var dark = stored === 'dark' || (!stored && window.matchMedia('(prefers-color-scheme: dark)').matches);
+          if (dark) document.documentElement.classList.add('dark');
+        } catch (e) { /* storage unavailable */ }
+      })();
+    </script>
+
+    <title>Nexus — Private Messaging</title>
   </head>
   <body>
     <div id="root"></div>

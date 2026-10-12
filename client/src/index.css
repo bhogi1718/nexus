@@ -2,7 +2,87 @@
 @tailwind components;
 @tailwind utilities;
 
+/*
+  Romantic Mauve palette
+    Blush #F2D7DC · Dusty Rose #D49AAE · Mauve Wood #A8788E
+    Deep Plum #6B4A5E · Mulberry #3E2A3A
+
+  Contrast rule: Dusty Rose and Mauve Wood never carry text on light surfaces
+  (1.7:1 and 2.7:1 on Blush). They are fills, borders and decoration only.
+  Text is Mulberry or Deep Plum.
+*/
+
 @layer base {
+  :root {
+    --c-bg: 251 244 246;
+    --c-surface: 255 255 255;
+    --c-surface-sunken: 247 235 238;
+    --c-surface-raised: 253 249 250;
+    --c-surface-accent: 242 215 220;
+    --c-surface-inverse: 62 42 58;
+
+    --c-content: 62 42 58;
+    --c-content-secondary: 107 74 94;
+    --c-content-muted: 122 86 104;
+    --c-content-inverse: 242 215 220;
+    --c-content-on-primary: 255 255 255;
+
+    --c-border: 232 210 216;
+    --c-border-strong: 212 154 174;
+    --c-border-interactive: 168 120 142;
+
+    --c-primary: 107 74 94;
+    --c-primary-hover: 88 60 77;
+    --c-primary-subtle: 242 215 220;
+
+    --c-accent: 212 154 174;
+    --c-accent-strong: 168 120 142;
+
+    --c-success: 63 102 80;
+    --c-success-subtle: 227 238 231;
+    --c-danger: 155 45 63;
+    --c-danger-subtle: 251 228 232;
+    --c-warning: 138 90 30;
+    --c-warning-subtle: 249 238 222;
+
+    --shadow-color: 62 42 58;
+  }
+
+  .dark {
+    --c-bg: 36 24 33;
+    --c-surface: 50 34 46;
+    --c-surface-sunken: 28 19 26;
+    --c-surface-raised: 62 42 58;
+    --c-surface-accent: 78 54 71;
+    --c-surface-inverse: 242 215 220;
+
+    --c-content: 242 215 220;
+    --c-content-secondary: 212 154 174;
+    --c-content-muted: 183 143 160;
+    --c-content-inverse: 62 42 58;
+    --c-content-on-primary: 62 42 58;
+
+    --c-border: 78 54 71;
+    --c-border-strong: 110 78 97;
+    --c-border-interactive: 168 120 142;
+
+    --c-primary: 212 154 174;
+    --c-primary-hover: 226 177 193;
+    --c-primary-subtle: 62 42 58;
+
+    --c-accent: 212 154 174;
+    --c-accent-strong: 168 120 142;
+
+    --c-success: 127 176 150;
+    --c-success-subtle: 44 62 53;
+    --c-danger: 224 132 149;
+    --c-danger-subtle: 71 36 44;
+    --c-warning: 217 168 95;
+    --c-warning-subtle: 66 50 28;
+
+    --shadow-color: 0 0 0;
+  }
+
   .material-symbols-outlined {
     font-family: 'Material Symbols Outlined';
     font-weight: normal;
@@ -20,55 +100,79 @@
   }
 
   html {
-    background-color: #0e150e;
+    -webkit-tap-highlight-color: transparent;
   }
 
   body {
-    @apply bg-background text-on-background font-body-lg;
+    @apply bg-bg text-content font-sans;
+    font-size: 1rem;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
   }
 
-  .otp-input:focus {
-    box-shadow: 0 0 15px rgba(34, 197, 94, 0.3);
+  h1, h2, h3 {
+    @apply font-display;
   }
 
-  input {
-    @apply transition-colors duration-200;
+  input, textarea {
+    @apply transition-colors duration-fast;
   }
 
   button {
-    @apply transition-all duration-200;
+    @apply transition-all duration-fast;
+  }
+
+  /* One consistent keyboard affordance instead of seven hand-written rings. */
+  :where(a, button, input, textarea, select, [tabindex]):focus-visible {
+    outline: 2px solid rgb(var(--c-accent-strong));
+    outline-offset: 2px;
+    border-radius: 4px;
   }
 
   ::-webkit-scrollbar {
-    width: 4px;
+    width: 8px;
+    height: 8px;
   }
   ::-webkit-scrollbar-track {
     background: transparent;
   }
   ::-webkit-scrollbar-thumb {
-    background: theme('colors.outline-variant');
-    border-radius: 10px;
+    background: rgb(var(--c-border-strong) / 0.6);
+    border-radius: 9999px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgb(var(--c-border-strong));
+  }
+
+  ::selection {
+    background: rgb(var(--c-accent) / 0.4);
+    color: rgb(var(--c-content));
   }
 }
 
 @layer components {
   .glass-panel {
-    background: rgba(14, 21, 14, 0.8);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(74, 225, 118, 0.2);
+    background: rgb(var(--c-surface) / 0.72);
+    backdrop-filter: blur(20px) saturate(160%);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    border: 1px solid rgb(var(--c-surface) / 0.9);
   }
 
   .auth-card {
-    @apply glass-panel rounded-xl p-lg shadow-2xl w-full max-w-md;
+    @apply glass-panel rounded-2xl p-lg shadow-xl w-full max-w-md;
   }
 
   .auth-input {
-    @apply w-full bg-surface-container-high border border-outline-variant rounded-lg px-md py-3.5 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary transition-all text-on-surface placeholder:text-outline-variant;
+    @apply w-full bg-surface border border-border-interactive/50 rounded-lg px-md py-3.5 focus:outline-none focus:border-accent-strong focus:ring-4 focus:ring-accent/25 transition-all text-content placeholder:text-content-muted/60;
   }
 
   .auth-button {
-    @apply w-full bg-primary-container hover:bg-primary-container/90 text-on-primary-container font-headline-md py-md rounded-lg transition-all transform active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-sm;
+    @apply w-full bg-primary hover:bg-primary-hover text-content-on-primary text-title-md py-md rounded-lg transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-sm shadow-sm hover:shadow-md;
+  }
+
+  .surface-card {
+    @apply bg-surface border border-border rounded-xl shadow-sm;
   }
 }
 
@@ -76,6 +180,11 @@
   @keyframes fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
+  }
+
+  @keyframes fade-out {
+    from { opacity: 1; }
+    to { opacity: 0; }
   }
 
   @keyframes fade-in-up {
@@ -88,24 +197,69 @@
     to { transform: translateY(0); }
   }
 
+  @keyframes sheet-slide-down {
+    from { transform: translateY(0); }
+    to { transform: translateY(100%); }
+  }
+
   @keyframes dialog-scale-in {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+    from { opacity: 0; transform: scale(0.96) translateY(8px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
   }
 
-  .animate-fade-in {
-    animation: fade-in 0.15s ease-out;
+  @keyframes dialog-scale-out {
+    from { opacity: 1; transform: scale(1) translateY(0); }
+    to { opacity: 0; transform: scale(0.96) translateY(8px); }
   }
 
-  .animate-fade-in-up {
-    animation: fade-in-up 0.6s ease-out forwards;
+  @keyframes bubble-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.97); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
   }
 
-  .animate-sheet-slide-up {
-    animation: sheet-slide-up 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  @keyframes row-in {
+    from { opacity: 0; transform: translateX(-6px); }
+    to { opacity: 1; transform: translateX(0); }
   }
 
-  .animate-dialog-scale-in {
-    animation: dialog-scale-in 0.15s ease-out;
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+
+  .animate-fade-in { animation: fade-in 150ms ease-out; }
+  .animate-fade-out { animation: fade-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+  .animate-fade-in-up { animation: fade-in-up 400ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .animate-sheet-slide-up { animation: sheet-slide-up 250ms cubic-bezier(0.16, 1, 0.3, 1); }
+  .animate-sheet-slide-down { animation: sheet-slide-down 200ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+  .animate-dialog-scale-in { animation: dialog-scale-in 200ms cubic-bezier(0.16, 1, 0.3, 1); }
+  .animate-dialog-scale-out { animation: dialog-scale-out 150ms cubic-bezier(0.4, 0, 1, 1) forwards; }
+  .animate-bubble-in { animation: bubble-in 220ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+  .animate-row-in { animation: row-in 250ms cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+  .skeleton-shimmer {
+    background-image: linear-gradient(
+      90deg,
+      rgb(var(--c-surface-sunken)) 25%,
+      rgb(var(--c-surface-accent) / 0.7) 50%,
+      rgb(var(--c-surface-sunken)) 75%
+    );
+    background-size: 200% 100%;
+    animation: shimmer 1.6s ease-in-out infinite;
+  }
+
+  .text-balance { text-wrap: balance; }
+  .text-pretty { text-wrap: pretty; }
+}
+
+/* Honour the OS reduced-motion setting everywhere, including decorative canvases. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }

@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import csrf from 'csurf';
-import { register, login, logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updatePublicKey } from '../controllers/authController.js';
+import { register, login, logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updatePublicKey, updateProfile } from '../controllers/authController.js';
 import { verifyToken } from '../middleware/auth.js';
 import { verifyRefreshToken, generateTokens } from '../services/tokenService.js';
 
@@ -75,6 +75,7 @@ router.post('/login',
 
 router.post('/logout', verifyToken, logout);
 router.get('/profile', verifyToken, getProfile);
+router.patch('/profile', verifyToken, updateProfile);
 router.post('/update-public-key', verifyToken, updatePublicKey);
 
 // Refresh token endpoint

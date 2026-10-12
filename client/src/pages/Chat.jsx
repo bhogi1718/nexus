@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
-import chatAPI from '../services/chatService';
+import { useTheme } from '../context/ThemeContext';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { useConversations } from '../hooks/useConversations';
 import { useMessages } from '../hooks/useMessages';
 import { useChatSocket } from '../hooks/useChatSocket';
@@ -15,9 +17,17 @@ import { ProfilePanel } from '../components/chat/ProfilePanel';
 import { SearchResultItem } from '../components/chat/SearchResultItem';
 import { ConversationListItem } from '../components/chat/ConversationListItem';
 import { Icon } from '../components/ui/Icon';
+import { IconButton } from '../components/ui/IconButton';
+import { Avatar } from '../components/ui/Avatar';
+import { SkeletonList } from '../components/ui/Skeleton';
+import { TextField } from '../components/ui/TextField';
+import { useToast } from '../components/ui/Toast';
 
 export const Chat = () => {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
+  const { theme, toggleTheme } = useTheme();
+  const toast = useToast();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const [conversations, setConversations] = useState([]);
   const [error, setError] = useState('');
   const [typingUsers, setTypingUsers] = useState([]);
@@ -30,8 +40,8 @@ export const Chat = () => {
     contactEmail, setContactEmail,
     addingContact,
     contactMessage,
-    contacts, setContacts,
-    loadingContacts, setLoadingContacts,
+    contacts,
+    loadingContacts,
     loadConversations,
     handleSearch,
     startConversation: startConversationBase,
@@ -39,6 +49,7 @@ export const Chat = () => {
     isUnknownSender,
     handleAddContact: handleAddContactBase,
     handleOpenProfile,
+    loadContacts,
     handleRemoveContact,
     handleDeleteConversation,
     getConversationName,
@@ -56,6 +67,7 @@ export const Chat = () => {
     isDragging,
     loadMessages,
     handleSendMessage,
+    retryMessage,
     handleMessageInputChange,
     handleMediaUploadSuccess,
     handleDragEnter, handleDragLeave, handleDragOver, handleDrop,
@@ -74,12 +86,13 @@ export const Chat = () => {
     loadConversations,
   });
 
+  // Every hook reports failures through setError; surface them as toasts so they
+  // are visible no matter which screen is open.
   useEffect(() => {
-    if (error) {
-      const timer = setTimeout(() => setError(''), 3000);
-      return () => clearTimeout(timer);
-    }
-  }, [error]);
+    if (!error) return;
+    toast.error(error);
+    setError('');
+  }, [error, toast]);
 
   // Composed wrappers: starting a conversation (from search results or contacts)
   // must both create/find the conversation AND load its messages. These two
@@ -100,41 +113,57 @@ export const Chat = () => {
 
   const selectedConversationObj = conversations.find(c => c._id === selectedConversation);
 
+  const showProfile = activeTab === 'profile';
+
   if (loading && conversations.length === 0) {
     return (
-      <div className="h-screen bg-background flex items-center justify-center">
+      <div className="h-screen bg-bg flex items-center justify-center">
         <div className="text-center">
-          <Icon name="progress_activity" className="animate-spin text-primary text-[48px] mx-auto mb-4" />
-          <p className="text-on-surface-variant">Loading chat...</p>
+          <Icon name="progress_activity" className="animate-spin text-primary text-[44px] mx-auto mb-sm" />
+          <p className="text-content-muted text-body-md">Loading your conversations…</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="h-screen bg-background flex flex-col overflow-hidden">
+    <div className="h-screen bg-bg flex flex-col overflow-hidden">
       <InstallPrompt />
       {/* Header */}
-      <nav className="bg-surface border-b border-outline-variant shadow-sm flex-shrink-0">
-        <div className="max-w-7xl mx-auto px-4 py-2.5 sm:px-6 lg:py-4 flex justify-between items-center">
-          <div className="flex items-center gap-2 flex-1">
-            <Icon name="forum" filled className="text-primary text-[28px]" />
-            <h1 className="text-lg sm:text-2xl font-bold text-on-surface">Nexus</h1>
+      <nav className="bg-surface/85 backdrop-blur-md border-b border-border flex-shrink-0">
+        <div className="px-md lg:px-lg h-14 lg:h-16 flex justify-between items-center gap-sm">
+          <Link to="/" className="flex items-center gap-2 min-w-0" aria-label="Nexus home">
+            <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-surface-inverse flex items-center justify-center flex-shrink-0">
+              <span className="font-display text-content-inverse text-lg leading-none pb-0.5">N</span>
+            </span>
+            <span className="font-display text-title-lg tracking-tight truncate">Nexus</span>
+          </Link>
+
+          <div className="flex items-center gap-xs">
+            <IconButton
+              label={theme === 'dark' ? 'Switch to light theme' : 'Switch to dark theme'}
+              onClick={toggleTheme}
+            >
+              <Icon name={theme === 'dark' ? 'light_mode' : 'dark_mode'} className="text-[20px]" />
+            </IconButton>
+            <button
+              type="button"
+              onClick={handleOpenProfile}
+              aria-label="Your profile"
+              className="rounded-full transition-transform duration-fast hover:scale-105 active:scale-95"
+            >
+              <Avatar name={user?.name} src={user?.avatar} size="sm" />
+            </button>
           </div>
-          <button
-            onClick={logout}
-            className="px-3 sm:px-4 py-2 font-label-caps text-label-caps text-on-surface-variant hover:bg-surface-container-high rounded-lg transition-colors min-h-[40px] flex items-center justify-center"
-          >
-            Logout
-          </button>
         </div>
       </nav>
 
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-h-0 overflow-hidden md:flex-row md:gap-4 lg:gap-6 md:p-4 lg:p-6">
-        <Sidebar
+        {isDesktop && <Sidebar
           user={user}
-          onOpenProfile={handleOpenProfile}
+          onOpenContacts={loadContacts}
+          loadingConversations={loading}
           contactEmail={contactEmail}
           setContactEmail={setContactEmail}
           addingContact={addingContact}
@@ -153,10 +182,12 @@ export const Chat = () => {
           contacts={contacts}
           onRemoveContact={handleRemoveContact}
           isUnknownSender={isUnknownSender}
-        />
+        />}
 
-        {/* Mobile Tab Content - Hidden on tablet/desktop */}
-        <div className="flex-1 flex flex-col min-h-0 md:hidden pb-[calc(4rem+env(safe-area-inset-bottom))]">
+        {/* Only the active layout is mounted, so a chat never runs two message
+            lists, two composers and two sets of effects at once. */}
+        {!isDesktop && (
+        <div className={`flex-1 flex flex-col min-h-0 ${selectedConversation ? '' : 'pb-[calc(3.5rem+env(safe-area-inset-bottom))]'}`}>
           {selectedConversation ? (
             <ChatWindow
               variant="mobile"
@@ -172,24 +203,35 @@ export const Chat = () => {
               onMessageInputChange={handleMessageInputChange}
               onSendMessage={handleSendMessage}
               fileInputRef={fileInputRef}
-              error={error}
+              onRetryMessage={retryMessage}
               onUploadSuccess={handleMediaUploadSuccess}
             />
           ) : (
             <>
               {activeTab === 'chats' && (
                 <div className="flex-1 overflow-y-auto flex flex-col">
-                  <div className="p-3 space-y-2 flex-shrink-0">
-                    <input type="text" placeholder="Search..." value={searchQuery} onChange={handleSearch} className="w-full px-3 py-2 border border-outline-variant rounded-lg focus:outline-none focus:ring-1 focus:ring-primary bg-surface-container-low text-on-surface placeholder:text-outline text-sm" />
+                  <div className="p-sm flex-shrink-0">
+                    <TextField
+                      icon="search"
+                      type="search"
+                      placeholder="Search conversations"
+                      value={searchQuery}
+                      onChange={handleSearch}
+                      aria-label="Search conversations"
+                    />
                   </div>
-                  {searchResults.length > 0 ? (
+                  {loading ? (
+                    <SkeletonList count={6} />
+                  ) : searchResults.length > 0 ? (
                     <div className="flex-1 overflow-y-auto">
                       {searchResults.map(searchUser => (
                         <SearchResultItem key={searchUser._id} user={searchUser} onClick={() => startConversation(searchUser._id)} />
                       ))}
                     </div>
+                  ) : searchQuery.trim().length >= 2 ? (
+                    <EmptyState type="noResults" />
                   ) : conversations.length === 0 ? (
-                    <EmptyState type="noConversations" />
+                    <EmptyState type="noConversations" onAction={() => setActiveTab('contacts')} />
                   ) : (
                     <div className="flex-1 overflow-y-auto">
                       {conversations.map(conversation => (
@@ -200,7 +242,8 @@ export const Chat = () => {
                           name={getConversationName(conversation)}
                           isUnknown={isUnknownSender(conversation)}
                           onClick={() => loadMessages(conversation._id)}
-                          padding="p-4"
+                          currentUserId={user?.id}
+                          onDelete={() => handleDeleteConversation(conversation._id)}
                         />
                       ))}
                     </div>
@@ -226,10 +269,13 @@ export const Chat = () => {
             </>
           )}
         </div>
+        )}
 
-        {/* Unified Chat Area (Tablet/Desktop) */}
-        <div className="hidden md:flex md:flex-1 bg-surface md:rounded-xl shadow-lg md:border md:border-outline-variant flex-col min-h-0 overflow-hidden relative">
-          {selectedConversation ? (
+        {isDesktop && (
+        <div className="flex flex-1 bg-surface rounded-2xl shadow-md border border-border flex-col min-h-0 overflow-hidden relative">
+          {showProfile ? (
+            <ProfilePanel user={user} onClose={() => setActiveTab('chats')} />
+          ) : selectedConversation ? (
             <ChatWindow
               variant="desktop"
               conversation={selectedConversationObj}
@@ -244,7 +290,7 @@ export const Chat = () => {
               onMessageInputChange={handleMessageInputChange}
               onSendMessage={handleSendMessage}
               fileInputRef={fileInputRef}
-              error={error}
+              onRetryMessage={retryMessage}
               onUploadSuccess={handleMediaUploadSuccess}
               dragDrop={{ isDragging, onDragEnter: handleDragEnter, onDragLeave: handleDragLeave, onDragOver: handleDragOver, onDrop: handleDrop }}
             />
@@ -252,28 +298,26 @@ export const Chat = () => {
             <EmptyState type="selectConversation" />
           )}
         </div>
+        )}
       </div>
 
-      <MobileTabBar
+      {!isDesktop && <MobileTabBar
         activeTab={activeTab}
         onSelectChats={() => setActiveTab('chats')}
         onSelectContacts={() => {
           setActiveTab('contacts');
-          setLoadingContacts(true);
-          chatAPI.getContacts()
-            .then(res => setContacts(res.data.contacts || []))
-            .catch(() => setContacts([]))
-            .finally(() => setLoadingContacts(false));
+          loadContacts();
         }}
         onSelectProfile={handleOpenProfile}
-      />
+        unreadCount={conversations.reduce((sum, c) => sum + (c.unreadCount || 0), 0)}
+        hidden={!!selectedConversation}
+      />}
 
       {contextMenu && (
         <MessageContextMenu
           message={contextMenu}
           isCurrentUser={String(contextMenu.sender?._id || contextMenu.sender?.id) === String(user?.id)}
           onClose={() => setContextMenu(null)}
-          onCopy={() => setContextMenu(null)}
           onDelete={handleDeleteMessage}
         />
       )}
