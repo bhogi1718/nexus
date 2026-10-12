@@ -1,6 +1,7 @@
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
+import { PreferencesProvider } from './context/PreferencesContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -13,6 +14,7 @@ function App() {
   return (
     <ErrorBoundary>
       <ThemeProvider>
+        <PreferencesProvider>
         <ToastProvider>
           <Router>
             <AuthProvider>
@@ -33,6 +35,7 @@ function App() {
             </AuthProvider>
           </Router>
         </ToastProvider>
+        </PreferencesProvider>
       </ThemeProvider>
     </ErrorBoundary>
   );

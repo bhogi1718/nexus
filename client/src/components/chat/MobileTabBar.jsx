@@ -4,7 +4,7 @@ import { Icon } from '../ui/Icon';
 const TABS = [
   { id: 'chats', icon: 'chat_bubble', label: 'Chats' },
   { id: 'contacts', icon: 'group', label: 'Contacts' },
-  { id: 'profile', icon: 'account_circle', label: 'Profile' },
+  { id: 'profile', icon: 'settings', label: 'Settings' },
 ];
 
 export const MobileTabBar = ({ activeTab, onSelectChats, onSelectContacts, onSelectProfile, unreadCount = 0, hidden = false }) => {

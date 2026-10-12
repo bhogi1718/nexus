@@ -45,6 +45,11 @@
     --c-warning: 138 90 30;
     --c-warning-subtle: 249 238 222;
 
+    /* "Seen" ticks. No single blue reads on both the plum bubble and white, so
+       one tone sits on our own bubbles and another on regular surfaces. */
+    --c-read-on-bubble: 125 211 252;
+    --c-read: 37 99 235;
+
     --shadow-color: 62 42 58;
   }
 
@@ -79,6 +84,9 @@
     --c-danger-subtle: 71 36 44;
     --c-warning: 217 168 95;
     --c-warning-subtle: 66 50 28;
+
+    --c-read-on-bubble: 30 64 175;
+    --c-read: 125 211 252;
 
     --shadow-color: 0 0 0;
   }

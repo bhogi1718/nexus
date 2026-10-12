@@ -14,6 +14,7 @@ export const ContactsPanel = ({
   contacts,
   onMessageContact,
   onRemoveContact,
+  onOpenInfo,
 }) => (
   <div className="flex-1 overflow-y-auto flex flex-col bg-bg">
     <div className="px-md pt-md pb-sm flex-shrink-0">
@@ -40,6 +41,7 @@ export const ContactsPanel = ({
               contact={contact}
               onMessage={() => onMessageContact(contact._id)}
               onRemove={() => onRemoveContact(contact._id)}
+              onOpenInfo={onOpenInfo}
             />
           ))}
         </div>

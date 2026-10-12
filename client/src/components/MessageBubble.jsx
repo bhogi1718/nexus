@@ -2,6 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Avatar } from './ui/Avatar';
 import { Icon } from './ui/Icon';
 import { MediaMessage } from './MediaMessage';
+import { MessageStatus, messageStatus } from './MessageStatus';
 
 const LONG_PRESS_MS = 450;
 
@@ -27,8 +28,8 @@ export const MessageBubble = ({
 
   if (!message || !message.sender) return null;
 
-  const isRead = isCurrentUser && (message.readBy || []).some(r => String(r.user?._id || r.user) !== String(user?.id));
-  const isDelivered = isCurrentUser && (message.deliveredTo || []).some(d => String(d?._id || d) !== String(user?.id));
+  const status = isCurrentUser ? messageStatus(message, user?.id) : null;
+  const failed = status === 'failed';
 
   // Long-press is a touch gesture; mouse users get right-click and the hover button.
   const handlePointerDown = (e) => {
@@ -48,21 +49,6 @@ export const MessageBubble = ({
   };
 
   const time = new Date(message.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-
-  let receipt = null;
-  if (isCurrentUser) {
-    if (message.failed) {
-      receipt = <Icon name="error" className="text-[15px]" />;
-    } else if (message.isOptimistic) {
-      receipt = <Icon name="schedule" className="text-[14px] opacity-60" />;
-    } else if (isRead) {
-      receipt = <Icon name="done_all" className="text-[15px] text-accent" />;
-    } else if (isDelivered) {
-      receipt = <Icon name="done_all" className="text-[15px] opacity-70" />;
-    } else {
-      receipt = <Icon name="done" className="text-[15px] opacity-70" />;
-    }
-  }
 
   return (
     <div
@@ -93,7 +79,7 @@ export const MessageBubble = ({
           ${isCurrentUser
             ? 'bg-primary text-content-on-primary'
             : 'bg-surface text-content border border-border'}
-          ${message.failed ? 'opacity-80' : ''}`}
+          ${failed ? 'opacity-80' : ''}`}
       >
         {!isCurrentUser && isFirstInGroup && displayName && (
           <p className="text-caption font-semibold text-content-secondary mb-0.5">{displayName}</p>
@@ -114,12 +100,12 @@ export const MessageBubble = ({
 
         <span className={`mt-0.5 flex items-center gap-1 text-[11px] tabular-nums
           ${isCurrentUser ? 'justify-end text-content-on-primary/70' : 'text-content-muted'}`}>
-          {message.failed ? 'Not sent' : time}
-          {receipt}
+          {failed ? 'Not sent' : time}
+          {status && <MessageStatus status={status} onBubble />}
         </span>
       </div>
 
-      {message.failed && onRetry && (
+      {failed && onRetry && (
         <button
           type="button"
           onClick={() => onRetry(message)}

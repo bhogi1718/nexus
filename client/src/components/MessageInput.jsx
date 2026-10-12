@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from './ui/Icon';
 import { IconButton } from './ui/IconButton';
 import { MediaUploader } from './MediaUploader';
+import { usePreferences } from '../context/PreferencesContext';
 
 const MAX_HEIGHT_PX = 160;
 
@@ -25,6 +26,7 @@ export const MessageInput = React.forwardRef(({
   const formRef = useRef(null);
   const emojiRef = useRef(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const { prefs } = usePreferences();
   const canSend = !disabled && value.trim().length > 0;
 
   React.useImperativeHandle(ref, () => formRef.current);
@@ -57,11 +59,14 @@ export const MessageInput = React.forwardRef(({
   }, [showEmoji]);
 
   const handleKeyDown = (e) => {
-    // Enter sends; Shift+Enter inserts a newline. Ignore while an IME is composing.
-    if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-      e.preventDefault();
-      if (canSend) formRef.current?.requestSubmit();
-    }
+    if (e.key !== 'Enter' || e.nativeEvent.isComposing) return;
+    // Touch keyboards: Enter is a newline and the send button sends, as on phones.
+    const touch = window.matchMedia('(pointer: coarse)').matches;
+    const modifier = e.ctrlKey || e.metaKey;
+    const sends = prefs.enterToSend ? !e.shiftKey && !touch : modifier;
+    if (!sends) return;
+    e.preventDefault();
+    if (canSend) formRef.current?.requestSubmit();
   };
 
   const insertEmoji = (emoji) => {

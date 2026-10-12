@@ -13,6 +13,7 @@ import { EmptyState } from '../EmptyState';
 export const Sidebar = ({
   user,
   onOpenContacts,
+  onOpenContactInfo,
   contactEmail,
   setContactEmail,
   addingContact,
@@ -141,6 +142,7 @@ export const Sidebar = ({
                 contact={contact}
                 onMessage={() => handleMessageContact(contact._id)}
                 onRemove={() => onRemoveContact(contact._id)}
+                onOpenInfo={onOpenContactInfo ? (id) => { setShowContacts(false); onOpenContactInfo(id); } : undefined}
               />
             ))}
           </div>

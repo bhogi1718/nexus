@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Icon } from '../ui/Icon';
 import { ChatHeader } from '../ChatHeader';
 import { MessageBubble } from '../MessageBubble';
@@ -27,29 +27,56 @@ export const ChatWindow = ({
   onSendMessage,
   fileInputRef,
   onUploadSuccess,
+  onOpenInfo,
+  hasMore = false,
+  loadingOlder = false,
+  onLoadOlder,
   dragDrop, // { isDragging, onDragEnter, onDragLeave, onDragOver, onDrop } — desktop only
 }) => {
   const messagesContainerRef = useRef(null);
   const messagesEndRef = useRef(null);
   const isNearBottomRef = useRef(true);
+  // Set while older history is being inserted above, so we can keep the reader's
+  // place instead of jumping (or announcing "new messages").
+  const prependAnchorRef = useRef(null);
+  const lastMessageIdRef = useRef(null);
   const [showNewMessagesPill, setShowNewMessagesPill] = useState(false);
 
   // Switching conversations: jump to bottom instantly and reset scroll tracking.
   useEffect(() => {
     isNearBottomRef.current = true;
+    lastMessageIdRef.current = null;
     setShowNewMessagesPill(false);
     messagesEndRef.current?.scrollIntoView({ behavior: 'auto' });
   }, [conversation?._id]);
 
-  // New message arrived: only auto-scroll if the user was already near the
-  // bottom. Otherwise, let them keep reading history and surface a pill instead.
-  useEffect(() => {
-    if (isNearBottomRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  useLayoutEffect(() => {
+    const el = messagesContainerRef.current;
+    if (prependAnchorRef.current && el) {
+      el.scrollTop = el.scrollHeight - prependAnchorRef.current;
+      prependAnchorRef.current = null;
+      return;
+    }
+
+    // Only a new message at the *end* counts; status changes (ticks) don't.
+    const lastId = messages[messages.length - 1]?._id;
+    if (lastId === lastMessageIdRef.current) return;
+    // null after switching chats, undefined while the list was still empty.
+    const firstLoad = lastMessageIdRef.current == null;
+    lastMessageIdRef.current = lastId;
+
+    if (firstLoad || isNearBottomRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: firstLoad ? 'auto' : 'smooth' });
     } else {
       setShowNewMessagesPill(true);
     }
   }, [messages]);
+
+  const loadOlder = () => {
+    const el = messagesContainerRef.current;
+    if (el) prependAnchorRef.current = el.scrollHeight - el.scrollTop;
+    onLoadOlder?.();
+  };
 
   const handleScroll = () => {
     const el = messagesContainerRef.current;
@@ -76,6 +103,8 @@ export const ChatWindow = ({
         onClose={!isMobile ? onBack : undefined}
         user={user}
         isTyping={typingUsers.length > 0}
+        displayName={displayName}
+        onOpenInfo={onOpenInfo}
       />
 
       <div className="relative flex-1 flex flex-col min-h-0">
@@ -111,6 +140,20 @@ export const ChatWindow = ({
               <EmptyState type="noMessages" />
             ) : (
               <div className="mt-auto">
+                {hasMore && (
+                  <div className="flex justify-center pb-sm">
+                    <button
+                      type="button"
+                      onClick={loadOlder}
+                      disabled={loadingOlder}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-border text-caption font-semibold text-content-secondary shadow-xs
+                        transition-colors duration-fast hover:bg-surface-sunken disabled:opacity-60"
+                    >
+                      <Icon name={loadingOlder ? 'progress_activity' : 'history'} className={`text-[16px] ${loadingOlder ? 'animate-spin' : ''}`} />
+                      {loadingOlder ? 'Loading…' : 'Load earlier messages'}
+                    </button>
+                  </div>
+                )}
                 {timeline.map(item => {
                   if (item.type === 'date') {
                     return <DateSeparator key={item.key} label={item.label} />;

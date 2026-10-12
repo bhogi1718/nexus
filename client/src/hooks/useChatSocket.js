@@ -1,23 +1,35 @@
-import { useEffect } from 'react';
-import chatAPI from '../services/chatService';
+import { useEffect, useRef, useState } from 'react';
 import {
   initializeSocket,
-  onMessageReceive,
-  onConversationNotify,
-  onMessagesRead,
-  onTypingStart,
-  onTypingStop,
-  onUserOnline,
-  onUserOffline,
-  offMessageReceive,
-  offConversationNotify,
-  offMessagesRead,
-  offTypingStart,
-  offTypingStop,
-  offUserOnline,
-  offUserOffline,
+  subscribe,
+  confirmDelivered,
+  markConversationRead,
+  getConnectionStatus,
 } from '../services/socket';
 import { decryptMessageIfNeeded } from '../utils/decryptMessageIfNeeded';
+import { confirmSent } from './useMessages';
+
+const idOf = (value) => String(value?._id || value?.id || value || '');
+
+const previewText = (message) => {
+  if (message.fileUrl) return message.fileName || 'Attachment';
+  if (message.undecryptable) return 'Encrypted message';
+  return message.content || '';
+};
+
+// Adds `userId` to a message's deliveredTo / readBy for a status update.
+const applyStatus = (message, { status, userId, at }) => {
+  const deliveredTo = message.deliveredTo || [];
+  const readBy = message.readBy || [];
+  const next = { ...message };
+  if (!deliveredTo.some(d => idOf(d) === userId)) next.deliveredTo = [...deliveredTo, userId];
+  if (status === 'read' && !readBy.some(r => idOf(r.user) === userId)) {
+    next.readBy = [...readBy, { user: userId, readAt: at }];
+  }
+  return next;
+};
+
+const isVisible = () => document.visibilityState === 'visible';
 
 export const useChatSocket = ({
   user,
@@ -27,142 +39,165 @@ export const useChatSocket = ({
   selectedConversationRef,
   activeConversationRef,
   loadConversations,
+  reloadOpenConversation,
+  prefs,
+  displayName,
+  conversations,
 }) => {
-  useEffect(() => {
-    const handleUserOnline = ({ userId }) => {
-      setConversations(prev => prev.map(conv => ({
-        ...conv,
-        participants: conv.participants.map(p =>
-          String(p._id) === String(userId) ? { ...p, isOnline: true } : p
-        )
-      })));
-    };
+  const [connection, setConnection] = useState(getConnectionStatus);
+  const lastStatusRef = useRef(getConnectionStatus());
 
-    const handleUserOffline = ({ userId }) => {
-      setConversations(prev => prev.map(conv => ({
-        ...conv,
-        participants: conv.participants.map(p =>
-          String(p._id) === String(userId) ? { ...p, isOnline: false } : p
-        )
-      })));
-    };
-
-    onUserOnline(handleUserOnline);
-    onUserOffline(handleUserOffline);
-
-    return () => {
-      offUserOnline();
-      offUserOffline();
-    };
-  }, []);
+  // Handlers are registered once; this ref gives them the latest values. State
+  // updaters below stay pure — side effects are decided from these snapshots.
+  const latest = useRef({});
+  latest.current = { user, prefs, displayName, loadConversations, reloadOpenConversation, conversations };
 
   useEffect(() => {
-    const token = localStorage.getItem('accessToken');
-    if (token) {
-      initializeSocket(token);
-    }
+    initializeSocket();
+    const me = () => String(latest.current.user?.id);
+    const openId = () => selectedConversationRef.current;
 
-    onMessageReceive((message) => {
-      const currentConvId = selectedConversationRef.current;
-      const conversation = activeConversationRef.current;
+    const readOpenConversation = () => {
+      const id = openId();
+      if (!id || !isVisible()) return;
+      markConversationRead(id);
+      setConversations(prev => prev.map(c => (c._id === id ? { ...c, unreadCount: 0 } : c)));
+    };
 
-      if (!currentConvId || String(message.conversation) !== String(currentConvId)) {
-        return;
+    const notifyDesktop = (message, conversation) => {
+      const { prefs: p, displayName: name } = latest.current;
+      if (!p?.notifications || isVisible() || !('Notification' in window)) return;
+      if (Notification.permission !== 'granted') return;
+      const title = name ? name(message.sender) : (message.sender?.name || 'New message');
+      const body = p.notificationPreview ? previewText(message) : 'New message';
+      try {
+        const n = new Notification(title, { body, tag: conversation?._id || message.conversation, icon: '/favicon.svg' });
+        n.onclick = () => { window.focus(); n.close(); };
+      } catch {
+        // Some browsers only allow notifications from a service worker.
       }
+    };
 
-      if (message.sender && typeof message.sender === 'object' && !message.sender._id && message.sender.id) {
-        message.sender._id = message.sender.id;
-      }
+    const unsubscribers = [
+      // Messages in the conversation that's open.
+      subscribe('message:receive', (raw) => {
+        if (!openId() || String(raw.conversation) !== String(openId())) return;
+        const fromMe = idOf(raw.sender) === me();
+        const message = decryptMessageIfNeeded(raw, activeConversationRef.current, latest.current.user);
 
-      const isMessageFromCurrentUser = String(message.sender?._id || message.sender?.id) === String(user.id);
-      const decryptedMsg = decryptMessageIfNeeded(message, conversation, user);
-
-      setMessages(prev => {
-        if (isMessageFromCurrentUser) {
-          const optimisticMsg = prev.find(m => m.isOptimistic);
-          if (optimisticMsg) {
-            return prev.map(m =>
-              m.isOptimistic
-                ? {
-                    ...m,
-                    _id: message._id,
-                    sender: message.sender,
-                    deliveredTo: message.deliveredTo || [],
-                    readBy: message.readBy || [],
-                    isOptimistic: false
-                  }
-                : m
-            );
+        setMessages(prev => {
+          if (fromMe && raw.clientId && prev.some(m => m.clientId === raw.clientId)) {
+            // Our own message echoed back: confirm it, keep the plaintext we already show.
+            return confirmSent(prev, raw.clientId, { _id: raw._id, createdAt: raw.createdAt });
           }
-          return [...prev, decryptedMsg];
-        }
-        return [...prev, decryptedMsg];
-      });
-
-      let previewContent = decryptedMsg.undecryptable ? '🔒 Encrypted message' : decryptedMsg.content;
-      if (message.fileUrl && message.fileName) {
-        previewContent = message.fileName;
-      }
-      setConversations(prev => prev.map(conv =>
-        conv._id === currentConvId
-          ? { ...conv, lastMessage: { ...message, content: previewContent }, lastMessageAt: new Date() }
-          : conv
-      ));
-    });
-
-    onTypingStart(({ userId }) => {
-      if (String(userId) !== String(user.id)) {
-        setTypingUsers(prev => [...new Set([...prev, userId])]);
-      }
-    });
-
-    onTypingStop(({ userId }) => {
-      setTypingUsers(prev => prev.filter(id => id !== userId));
-    });
-
-    onConversationNotify((message) => {
-      const openId = selectedConversationRef.current;
-      if (String(message.conversation) === String(openId)) {
-        chatAPI.markConversationRead(openId).catch(() => {});
-        return;
-      }
-      setConversations(prev => {
-        const exists = prev.some(conv => String(conv._id) === String(message.conversation));
-        if (!exists) {
-          setTimeout(() => loadConversations(), 0);
-          return prev;
-        }
-        return prev.map(conv => {
-          if (String(conv._id) !== String(message.conversation)) return conv;
-          const dec = decryptMessageIfNeeded(message, conv, user);
-          let preview = dec.undecryptable ? '🔒 Encrypted message' : dec.content;
-          if (message.fileUrl && message.fileName) preview = message.fileName;
-          return {
-            ...conv,
-            unreadCount: (conv.unreadCount || 0) + 1,
-            lastMessage: { ...message, content: preview },
-            lastMessageAt: new Date()
-          };
+          if (prev.some(m => m._id === raw._id)) return prev;
+          return [...prev, fromMe ? { ...message, status: 'sent' } : message];
         });
-      });
-    });
 
-    onMessagesRead(({ conversationId, readerId }) => {
-      if (String(conversationId) !== String(selectedConversationRef.current)) return;
-      setMessages(prev => prev.map(m => {
-        const senderId = m.sender?._id || m.sender?.id || m.sender;
-        if (String(senderId) !== String(user.id)) return m;
-        const alreadyRead = (m.readBy || []).some(r => String(r.user?._id || r.user) === String(readerId));
-        return alreadyRead ? m : { ...m, readBy: [...(m.readBy || []), { user: readerId, readAt: new Date() }] };
-      }));
-    });
+        if (!fromMe) {
+          confirmDelivered([raw._id]);
+          readOpenConversation();
+        }
+      }),
+
+      // Every message in any of my conversations (also those I sent from another tab).
+      subscribe('conversation:notify', (raw) => {
+        const fromMe = idOf(raw.sender) === me();
+        const isOpen = String(raw.conversation) === String(openId());
+        if (!fromMe) confirmDelivered([raw._id]);
+
+        const known = (latest.current.conversations || [])
+          .find(c => String(c._id) === String(raw.conversation));
+        if (!known) {
+          // A chat we haven't loaded (new, or restored after being deleted).
+          latest.current.loadConversations();
+          return;
+        }
+
+        const dec = decryptMessageIfNeeded(raw, known, latest.current.user);
+        const countsAsUnread = !fromMe && !(isOpen && isVisible());
+        if (!fromMe) notifyDesktop(dec, known);
+
+        setConversations(prev => {
+          const conv = prev.find(c => String(c._id) === String(raw.conversation));
+          if (!conv) return prev;
+          const updated = {
+            ...conv,
+            lastMessage: { ...dec, content: previewText(dec), status: fromMe ? 'sent' : undefined },
+            lastMessageAt: raw.createdAt || new Date().toISOString(),
+            unreadCount: countsAsUnread ? (conv.unreadCount || 0) + 1 : conv.unreadCount || 0,
+          };
+          // Most recent conversation first, as in every messenger.
+          return [updated, ...prev.filter(c => c !== conv)];
+        });
+      }),
+
+      // Our messages were delivered to / read by someone.
+      subscribe('message:status', (update) => {
+        const ids = new Set(update.messageIds);
+        if (String(update.conversationId) === String(openId())) {
+          setMessages(prev => prev.map(m => (ids.has(m._id) ? applyStatus(m, update) : m)));
+        }
+        setConversations(prev => prev.map(c => (
+          c._id === update.conversationId && c.lastMessage && ids.has(c.lastMessage._id)
+            ? { ...c, lastMessage: applyStatus(c.lastMessage, update) }
+            : c
+        )));
+      }),
+
+      // Read in another of my tabs: clear the badge here too.
+      subscribe('conversation:read', ({ conversationId }) => {
+        setConversations(prev => prev.map(c => (c._id === conversationId ? { ...c, unreadCount: 0 } : c)));
+      }),
+
+      subscribe('typing:start', ({ userId, conversationId }) => {
+        if (String(userId) === me()) return;
+        if (conversationId && String(conversationId) !== String(openId())) return;
+        setTypingUsers(prev => (prev.includes(userId) ? prev : [...prev, userId]));
+      }),
+
+      subscribe('typing:stop', ({ userId }) => {
+        setTypingUsers(prev => prev.filter(id => id !== userId));
+      }),
+
+      subscribe('user:online', ({ userId }) => {
+        setConversations(prev => prev.map(conv => ({
+          ...conv,
+          participants: conv.participants.map(p =>
+            (String(p._id) === String(userId) ? { ...p, isOnline: true } : p)),
+        })));
+      }),
+
+      subscribe('user:offline', ({ userId, lastSeen }) => {
+        setConversations(prev => prev.map(conv => ({
+          ...conv,
+          participants: conv.participants.map(p =>
+            (String(p._id) === String(userId) ? { ...p, isOnline: false, lastSeen: lastSeen || p.lastSeen } : p)),
+        })));
+        setTypingUsers(prev => prev.filter(id => id !== userId));
+      }),
+
+      // After a reconnect, events sent while we were away are gone: resync.
+      subscribe('connection:status', (status) => {
+        const previous = lastStatusRef.current;
+        lastStatusRef.current = status;
+        setConnection(status);
+        if (status === 'connected' && previous === 'reconnecting') {
+          latest.current.loadConversations();
+          latest.current.reloadOpenConversation?.();
+        }
+      }),
+    ];
+
+    // Coming back to the tab reads whatever arrived while it was hidden.
+    const onVisibility = () => { if (isVisible()) readOpenConversation(); };
+    document.addEventListener('visibilitychange', onVisibility);
 
     return () => {
-      offMessageReceive();
-      offConversationNotify();
-      offMessagesRead();
-      offTypingStart();
-      offTypingStop();
+      unsubscribers.forEach(off => off());
+      document.removeEventListener('visibilitychange', onVisibility);
     };
-  }, []);
+  }, [setConversations, setMessages, setTypingUsers, selectedConversationRef, activeConversationRef]);
+
+  return { connection };
 };

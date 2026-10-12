@@ -1,6 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import chatAPI from '../services/chatService';
 import { decryptMessageIfNeeded } from '../utils/decryptMessageIfNeeded';
+
+const SEARCH_DEBOUNCE_MS = 250;
 
 export const useConversations = ({ user, setConversations, setError, setActiveTab }) => {
   const [loading, setLoading] = useState(true);
@@ -14,35 +16,32 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
   const [contactIds, setContactIds] = useState(new Set());
   const [contactNicknames, setContactNicknames] = useState({});
 
+  const hasLoadedRef = useRef(false);
+  const searchSeqRef = useRef(0);
+  const searchTimerRef = useRef(null);
+
+  // Only the first load shows skeletons; later refreshes (new chat, reconnect)
+  // update in place instead of blanking the list.
   const loadConversations = async () => {
+    if (!hasLoadedRef.current) setLoading(true);
     try {
-      setLoading(true);
-      setError('');
       const response = await chatAPI.getConversations();
-      const onlineResponse = await chatAPI.getOnlineUsers();
-      const onlineUsersSet = new Set(onlineResponse.data.onlineUsers);
-
-      const conversationsWithStatus = response.data.conversations.map(conv => {
-        const withStatus = {
-          ...conv,
-          participants: conv.participants.map(p => ({
-            ...p,
-            isOnline: onlineUsersSet.has(String(p._id))
-          }))
-        };
-        if (withStatus.lastMessage?.content) {
-          withStatus.lastMessage = decryptMessageIfNeeded(withStatus.lastMessage, withStatus, user);
-        }
-        return withStatus;
-      });
-
-      setConversations(conversationsWithStatus || []);
-      setLoading(false);
+      // Presence (isOnline / lastSeen) arrives with each participant, already
+      // filtered through both users' privacy settings.
+      const list = (response.data.conversations || []).map(conv => (
+        conv.lastMessage?.content
+          ? { ...conv, lastMessage: decryptMessageIfNeeded(conv.lastMessage, conv, user) }
+          : conv
+      ));
+      list.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
+      setConversations(list);
+      hasLoadedRef.current = true;
     } catch (err) {
       console.error('Error loading conversations:', err);
       setError(err.response?.data?.message || 'Failed to load conversations');
+      if (!hasLoadedRef.current) setConversations([]);
+    } finally {
       setLoading(false);
-      setConversations([]);
     }
   };
 
@@ -59,21 +58,27 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
       .catch(() => {});
   }, []);
 
-  const handleSearch = async (e) => {
+  // Debounced, and stale responses are dropped so a slow early request can't
+  // overwrite the results for what the user has typed since.
+  const handleSearch = (e) => {
     const query = e.target.value;
     setSearchQuery(query);
+    clearTimeout(searchTimerRef.current);
+    const seq = ++searchSeqRef.current;
 
-    if (query.length < 2) {
+    if (query.trim().length < 2) {
       setSearchResults([]);
       return;
     }
 
-    try {
-      const response = await chatAPI.searchUsers(query);
-      setSearchResults(response.data.users);
-    } catch (err) {
-      console.error(err);
-    }
+    searchTimerRef.current = setTimeout(async () => {
+      try {
+        const response = await chatAPI.searchUsers(query.trim());
+        if (seq === searchSeqRef.current) setSearchResults(response.data.users || []);
+      } catch (err) {
+        console.error(err);
+      }
+    }, SEARCH_DEBOUNCE_MS);
   };
 
   // Returns the conversation id on success (so the caller can decide to load it),
@@ -102,30 +107,22 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
     return contactNicknames[String(person._id || person.id)] || person.name || 'User';
   };
 
-  const handleSetNickname = async (contact) => {
-    const current = contactNicknames[String(contact._id)] || '';
-    const input = window.prompt(
-      `Nickname for ${contact.name} (leave empty to remove):`,
-      current
-    );
-    if (input === null) return;
-
+  // Returns true on success so the caller can close its editor.
+  const handleSetNickname = async (contactId, nickname) => {
     try {
-      const response = await chatAPI.setContactNickname(contact._id, input);
+      const response = await chatAPI.setContactNickname(contactId, nickname);
+      const saved = response.data.nickname;
       setContactNicknames(prev => {
         const next = { ...prev };
-        if (response.data.nickname) {
-          next[String(contact._id)] = response.data.nickname;
-        } else {
-          delete next[String(contact._id)];
-        }
+        if (saved) next[String(contactId)] = saved;
+        else delete next[String(contactId)];
         return next;
       });
-      setContacts(prev => prev.map(c =>
-        c._id === contact._id ? { ...c, nickname: response.data.nickname } : c
-      ));
+      setContacts(prev => prev.map(c => (c._id === contactId ? { ...c, nickname: saved } : c)));
+      return true;
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to set nickname');
+      return false;
     }
   };
 
@@ -164,12 +161,14 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
   };
 
   const handleAddUnknownContact = async (otherUser) => {
-    if (!otherUser?.email) return;
+    if (!otherUser?.email) return false;
     try {
       const response = await chatAPI.addContact(otherUser.email);
       setContactIds(prev => new Set([...prev, String(response.data.contact._id)]));
+      return true;
     } catch (err) {
       setError(err.response?.data?.message || 'Failed to add contact');
+      return false;
     }
   };
 
@@ -197,8 +196,10 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
         next.delete(String(contactId));
         return next;
       });
+      return true;
     } catch (err) {
-      console.error('Failed to remove contact:', err);
+      setError(err.response?.data?.message || 'Failed to remove contact');
+      return false;
     }
   };
 

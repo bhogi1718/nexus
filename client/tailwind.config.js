@@ -43,6 +43,8 @@ export default {
         'danger-subtle': token('--c-danger-subtle'),
         warning: token('--c-warning'),
         'warning-subtle': token('--c-warning-subtle'),
+        read: token('--c-read'),
+        'read-on-bubble': token('--c-read-on-bubble'),
 
         // Legacy Material-3 names kept as aliases so existing components recolour
         // without edits; being migrated to the semantic names above.

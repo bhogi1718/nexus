@@ -1,4 +1,5 @@
 import { io } from 'socket.io-client';
+import { authAPI } from './api';
 
 // Derive the socket host from the API URL:
 // - absolute URL (http://host/api) → strip /api
@@ -6,62 +7,100 @@ import { io } from 'socket.io-client';
 // - unset (local dev) → the dev backend
 const rawApiUrl = import.meta.env.VITE_API_URL;
 const SOCKET_URL = rawApiUrl
-  ? (rawApiUrl.startsWith('http')
-      ? rawApiUrl.replace('/api', '')
-      : window.location.origin)
+  ? (rawApiUrl.startsWith('http') ? rawApiUrl.replace(/\/api\/?$/, '') : window.location.origin)
   : 'http://localhost:5000';
 
 let socket = null;
-// Track the open conversation so we can rejoin its room after a reconnect
-// (server-side room membership is lost every time the socket disconnects,
-// e.g. on a server restart — without this, live messages silently stop)
+// Rejoined after every reconnect: server-side room membership is lost whenever
+// the socket drops, and without this live messages silently stop.
 let currentConversationId = null;
 
-export const initializeSocket = (token) => {
-  // Reuse an existing socket whether connected OR still connecting —
-  // recreating it would orphan every listener registered on the old one
-  // (login calls this twice in quick succession)
-  if (socket) {
-    return socket;
-  }
+// Listeners live here rather than on the socket, so they survive the socket
+// being created later or recreated after logout/login.
+const listeners = new Map();
+const attached = new Set();
+
+const dispatch = (event, payload) => {
+  listeners.get(event)?.forEach(handler => {
+    try {
+      handler(payload);
+    } catch (err) {
+      console.error(`Socket handler for "${event}" failed:`, err);
+    }
+  });
+};
+
+const attach = (event) => {
+  if (!socket || attached.has(event)) return;
+  socket.on(event, (payload) => dispatch(event, payload));
+  attached.add(event);
+};
+
+/** Subscribe to a server event. Returns an unsubscribe function. */
+export const subscribe = (event, handler) => {
+  if (!listeners.has(event)) listeners.set(event, new Set());
+  listeners.get(event).add(handler);
+  attach(event);
+  return () => listeners.get(event)?.delete(handler);
+};
+
+// Synthetic event for the UI: 'connected' | 'reconnecting' | 'offline'.
+let connectionStatus = 'offline';
+const setStatus = (status) => {
+  if (status === connectionStatus) return;
+  connectionStatus = status;
+  dispatch('connection:status', status);
+};
+export const getConnectionStatus = () => connectionStatus;
+
+export const initializeSocket = () => {
+  // Reuse an existing socket whether connected OR still connecting.
+  if (socket) return socket;
 
   socket = io(SOCKET_URL, {
-    auth: {
-      token
-    },
+    // A function, so every reconnect reads the current token. Access tokens
+    // expire after an hour; a captured string would make reconnects fail forever.
+    auth: (cb) => cb({ token: localStorage.getItem('accessToken') }),
     reconnection: true,
     reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    reconnectionAttempts: 5,
-    transports: ['websocket', 'polling']
+    reconnectionDelayMax: 10000,
+    reconnectionAttempts: Infinity,
+    transports: ['websocket', 'polling'],
   });
 
+  attached.clear();
+  listeners.forEach((_, event) => attach(event));
+
   socket.on('connect', () => {
-    console.log('Socket connected:', socket.id);
-    // Rejoin the active conversation room after any (re)connect
-    if (currentConversationId) {
-      socket.emit('conversation:join', currentConversationId);
+    setStatus('connected');
+    if (currentConversationId) socket.emit('conversation:join', currentConversationId);
+  });
+
+  socket.on('disconnect', (reason) => {
+    // The server closing us on purpose (e.g. logout elsewhere) won't auto-retry.
+    setStatus(reason === 'io client disconnect' ? 'offline' : 'reconnecting');
+    if (reason === 'io server disconnect') socket.connect();
+  });
+
+  socket.io.on('reconnect_attempt', () => setStatus('reconnecting'));
+
+  socket.on('connect_error', async (error) => {
+    setStatus('reconnecting');
+    if (error?.message === 'Invalid token') {
+      // Let the HTTP layer refresh the access token, then retry with it.
+      try {
+        await authAPI.getProfile();
+        socket?.connect();
+      } catch {
+        // The refresh interceptor handles a dead session (redirect to login).
+      }
     }
   });
 
-  socket.on('disconnect', () => {
-    console.log('Socket disconnected');
-  });
-
-  socket.on('error', (error) => {
-    console.error('Socket error:', error);
-  });
-
-  socket.on('connect_error', (error) => {
-    console.error('Socket connection error:', error);
-  });
-
   return socket;
 };
 
-export const getSocket = () => {
-  return socket;
-};
+export const getSocket = () => socket;
 
 export const disconnectSocket = () => {
   currentConversationId = null;
@@ -69,158 +108,53 @@ export const disconnectSocket = () => {
     socket.disconnect();
     socket = null;
   }
+  attached.clear();
+  setStatus('offline');
 };
 
 export const joinConversation = (conversationId) => {
   currentConversationId = conversationId;
-  if (socket) {
-    socket.emit('conversation:join', conversationId);
-  }
+  socket?.emit('conversation:join', conversationId);
 };
 
 export const leaveConversation = (conversationId) => {
-  if (currentConversationId === conversationId) {
-    currentConversationId = null;
-  }
-  if (socket) {
-    socket.emit('conversation:leave', conversationId);
-  }
+  if (currentConversationId === conversationId) currentConversationId = null;
+  socket?.emit('conversation:leave', conversationId);
 };
 
-export const sendMessage = (conversationId, content, mediaData = null) => {
-  return new Promise((resolve, reject) => {
-    if (!socket) {
-      reject(new Error('Socket not connected'));
-      return;
-    }
+export const sendMessage = (conversationId, content, { clientId, media } = {}) => new Promise((resolve, reject) => {
+  if (!socket?.connected) {
+    reject(new Error('You are offline. The message will be kept so you can retry.'));
+    return;
+  }
 
-    const payload = { conversationId, content };
-    if (mediaData) {
-      payload.fileUrl = mediaData.fileUrl;
-      payload.fileName = mediaData.fileName;
-      payload.fileSize = mediaData.fileSize;
-      payload.type = mediaData.type;
-      payload.s3Key = mediaData.s3Key;
-    }
+  const payload = { conversationId, content, clientId };
+  if (media) {
+    payload.fileUrl = media.fileUrl;
+    payload.fileName = media.fileName;
+    payload.fileSize = media.fileSize;
+    payload.type = media.type;
+    payload.s3Key = media.s3Key;
+  }
 
-    socket.emit('message:send', payload, (response) => {
-      if (response.success) {
-        resolve(response);
-      } else {
-        reject(new Error(response.error || 'Failed to send message'));
-      }
-    });
+  // Without a timeout a send lost mid-reconnect would spin forever.
+  const timer = setTimeout(() => reject(new Error('Sending timed out')), 15000);
+  socket.emit('message:send', payload, (response) => {
+    clearTimeout(timer);
+    if (response?.success) resolve(response);
+    else reject(new Error(response?.error || 'Failed to send message'));
   });
+});
+
+export const startTyping = (conversationId) => socket?.emit('typing:start', conversationId);
+export const stopTyping = (conversationId) => socket?.emit('typing:stop', conversationId);
+
+/** Confirms to the server that these messages reached this device. */
+export const confirmDelivered = (messageIds) => {
+  if (messageIds?.length) socket?.emit('message:delivered', { messageIds });
 };
 
-export const startTyping = (conversationId) => {
-  if (socket) {
-    socket.emit('typing:start', conversationId);
-  }
-};
-
-export const stopTyping = (conversationId) => {
-  if (socket) {
-    socket.emit('typing:stop', conversationId);
-  }
-};
-
-export const markMessageAsRead = (messageId) => {
-  if (socket) {
-    socket.emit('message:read', messageId);
-  }
-};
-
-export const onMessageReceive = (callback) => {
-  if (socket) {
-    socket.on('message:receive', callback);
-  }
-};
-
-export const onConversationNotify = (callback) => {
-  if (socket) {
-    socket.on('conversation:notify', callback);
-  }
-};
-
-export const offConversationNotify = () => {
-  if (socket) {
-    socket.off('conversation:notify');
-  }
-};
-
-export const onMessagesRead = (callback) => {
-  if (socket) {
-    socket.on('messages:read', callback);
-  }
-};
-
-export const offMessagesRead = () => {
-  if (socket) {
-    socket.off('messages:read');
-  }
-};
-
-export const onTypingStart = (callback) => {
-  if (socket) {
-    socket.on('typing:start', callback);
-  }
-};
-
-export const onTypingStop = (callback) => {
-  if (socket) {
-    socket.on('typing:stop', callback);
-  }
-};
-
-export const onUserOnline = (callback) => {
-  if (socket) {
-    socket.on('user:online', callback);
-  }
-};
-
-export const onUserOffline = (callback) => {
-  if (socket) {
-    socket.on('user:offline', callback);
-  }
-};
-
-export const offMessageReceive = () => {
-  if (socket) {
-    socket.off('message:receive');
-  }
-};
-
-export const offTypingStart = () => {
-  if (socket) {
-    socket.off('typing:start');
-  }
-};
-
-export const offTypingStop = () => {
-  if (socket) {
-    socket.off('typing:stop');
-  }
-};
-
-export const offUserOnline = () => {
-  if (socket) {
-    socket.off('user:online');
-  }
-};
-
-export const offUserOffline = () => {
-  if (socket) {
-    socket.off('user:offline');
-  }
-};
-
-export const offAllListeners = () => {
-  if (socket) {
-    socket.off('message:receive');
-    socket.off('typing:start');
-    socket.off('typing:stop');
-    socket.off('user:online');
-    socket.off('user:offline');
-  }
+/** Marks every incoming message in the conversation as read. */
+export const markConversationRead = (conversationId) => {
+  if (conversationId) socket?.emit('conversation:read', conversationId);
 };

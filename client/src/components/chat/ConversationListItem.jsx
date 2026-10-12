@@ -4,6 +4,7 @@ import { Badge } from '../ui/Badge';
 import { ConfirmDialog } from '../ui/ConfirmDialog';
 import { Icon } from '../ui/Icon';
 import { IconButton } from '../ui/IconButton';
+import { MessageStatus, messageStatus } from '../MessageStatus';
 
 // Compact relative time: 14:02 today, "Yesterday", "Tue", then a date.
 const formatTimestamp = (value) => {
@@ -61,7 +62,7 @@ export const ConversationListItem = ({
   const hasUnread = unread > 0;
 
   const last = conversation.lastMessage;
-  const sentByMe = last && String(last.sender?._id || last.sender) === String(currentUserId);
+  const sentByMe = last && String(last.sender?._id || last.sender?.id || last.sender) === String(currentUserId);
   const isMedia = Boolean(last?.fileUrl);
 
   const otherParticipant = conversation.participants?.find(
@@ -114,7 +115,7 @@ export const ConversationListItem = ({
 
             <span className={`flex items-center gap-1 mt-0.5 text-body-sm truncate
               ${hasUnread ? 'text-content font-medium' : 'text-content-muted'}`}>
-              {sentByMe && <span className="flex-shrink-0 text-content-muted">You:</span>}
+              {sentByMe && <MessageStatus status={messageStatus(last, currentUserId)} />}
               {last?.undecryptable && <Icon name="lock" className="text-[14px] flex-shrink-0" />}
               {isMedia && !last?.undecryptable && <Icon name="attach_file" className="text-[14px] flex-shrink-0" />}
               <span className="truncate">{preview}</span>
