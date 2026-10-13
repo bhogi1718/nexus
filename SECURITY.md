@@ -64,7 +64,7 @@ methods: ['GET', 'POST']
 
 ---
 
-### 6. **Project Settings (`.claude/settings.json`)**
+### 6. **Project Settings**
 Development workflow protection:
 - ✅ Allow: npm, node, git, ls, cd, read, edit (controlled)
 - ✅ Deny: rm -rf, sudo, destructive commands
@@ -87,7 +87,7 @@ Development workflow protection:
 - [x] Environment variables not in code
 - [x] `.env` in `.gitignore`
 - [x] Required env vars validated at startup
-- [x] Claude Code settings restrict dangerous commands
+- [x] Editor settings restrict dangerous commands
 
 ---
 
