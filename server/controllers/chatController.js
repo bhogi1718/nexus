@@ -17,7 +17,6 @@ const formatUser = (user, viewer) => user ? {
   email: user.email,
   avatar: user.avatar,
   status: user.status,
-  publicKey: user.publicKey,
   ...visiblePresence(user, viewer),
 } : null;
 

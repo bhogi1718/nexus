@@ -1,7 +1,7 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
 import csrf from 'csurf';
-import { logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updatePublicKey, updateProfile, updateSettings } from '../controllers/authController.js';
+import { logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updateProfile, updateSettings } from '../controllers/authController.js';
 import { verifyToken } from '../middleware/auth.js';
 import { verifyRefreshToken, generateTokens } from '../services/tokenService.js';
 
@@ -38,7 +38,6 @@ router.post('/verify-otp-signup',
   validateName,
   validateEmail,
   body('otp').isLength({ min: 6, max: 6 }).withMessage('OTP must be 6 digits'),
-  body('publicKey').notEmpty().withMessage('Public key is required'),
   handleValidationErrors,
   verifyOTPAndRegister
 );
@@ -62,7 +61,6 @@ router.post('/logout', verifyToken, logout);
 router.get('/profile', verifyToken, getProfile);
 router.patch('/profile', verifyToken, updateProfile);
 router.patch('/settings', verifyToken, updateSettings);
-router.post('/update-public-key', verifyToken, updatePublicKey);
 
 // Refresh token endpoint
 router.post('/refresh', (req, res) => {

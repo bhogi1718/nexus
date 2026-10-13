@@ -17,7 +17,7 @@ export const sanitizeMessage = (content) => {
   if (!content || typeof content !== 'string') {
     return content;
   }
-  return sanitizeInput(content.trim()).slice(0, 5000); // Max 5000 chars
+  return sanitizeInput(content.trim()).slice(0, 20000); // Encrypted envelopes are longer than the 5000-character plaintext limit
 };
 
 export default {

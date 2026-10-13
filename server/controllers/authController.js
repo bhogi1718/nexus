@@ -8,8 +8,6 @@ const formatSelf = (user) => ({
   email: user.email,
   avatar: user.avatar,
   status: user.status,
-  publicKey: user.publicKey,
-  secretKey: user.secretKey,
   createdAt: user.createdAt,
   settings: {
     readReceipts: user.settings?.readReceipts !== false,
@@ -47,10 +45,10 @@ export const sendOTP = async (req, res) => {
 // Verify OTP and register user (Passwordless)
 export const verifyOTPAndRegister = async (req, res) => {
   try {
-    const { name, email, otp, publicKey, secretKey } = req.body;
+    const { name, email, otp } = req.body;
 
     // Validate inputs
-    if (!name || !email || !otp || !publicKey) {
+    if (!name || !email || !otp) {
       return res.status(400).json({ message: 'All fields are required' });
     }
 
@@ -74,8 +72,6 @@ export const verifyOTPAndRegister = async (req, res) => {
     const newUser = await User.create({
       name,
       email,
-      publicKey,
-      secretKey: secretKey || null,
       isEmailVerified: true
     });
 
@@ -237,33 +233,3 @@ export const updateSettings = async (req, res) => {
   }
 };
 
-// Sync this device's keypair to the server (used when the server has none yet)
-export const updatePublicKey = async (req, res) => {
-  try {
-    const { publicKey, secretKey } = req.body;
-
-    if (!publicKey) {
-      return res.status(400).json({ message: 'Public key is required' });
-    }
-
-    const update = { publicKey };
-    if (secretKey) {
-      update.secretKey = secretKey;
-    }
-
-    const user = await User.findByIdAndUpdate(req.userId, update);
-
-    res.status(200).json({
-      message: 'Keys updated successfully',
-      user: {
-        id: user.userId,
-        name: user.name,
-        email: user.email,
-        publicKey: user.publicKey
-      }
-    });
-  } catch (error) {
-    console.error('Update keys error:', error);
-    res.status(500).json({ message: 'Server error' });
-  }
-};

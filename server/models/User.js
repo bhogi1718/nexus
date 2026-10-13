@@ -9,8 +9,15 @@ const userSchema = new mongoose.Schema({
   isEmailVerified: { type: Boolean, default: false },
   avatar: { type: String, default: null },
   status: { type: String, default: "Hey there! I'm using Nexus" },
-  publicKey: { type: String, default: null },
-  secretKey: { type: String, default: null },
+  // Public key material only. Private keys never leave the device that created them.
+  identityKeyDh: { type: String, default: null },
+  identityKeySig: { type: String, default: null },
+  signedPreKey: {
+    keyId: { type: Number, default: null },
+    publicKey: { type: String, default: null },
+    signature: { type: String, default: null },
+  },
+  oneTimePreKeys: { type: [{ _id: false, keyId: Number, publicKey: String }], default: [] },
   contacts: { type: [String], default: [] },
   contactNicknames: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
   blockedUsers: { type: [String], default: [] },
@@ -110,6 +117,59 @@ export class User {
     const doc = await UserModel.findOneAndUpdate({ userId }, op, { new: true });
     if (!doc) throw new Error('User not found');
     return toPlain(doc);
+  }
+
+  static async publishKeys(userId, bundle) {
+    const doc = await UserModel.findOneAndUpdate(
+      { userId },
+      {
+        $set: {
+          identityKeyDh: bundle.identityKeyDh,
+          identityKeySig: bundle.identityKeySig,
+          signedPreKey: bundle.signedPreKey,
+          oneTimePreKeys: bundle.oneTimePreKeys,
+        },
+      },
+      { new: true }
+    );
+    return toPlain(doc);
+  }
+
+  static async addOneTimePreKeys(userId, keys, cap) {
+    const current = await UserModel.findOne({ userId }, { oneTimePreKeys: 1 });
+    if (!current) return null;
+    const combined = [...current.oneTimePreKeys.map(k => ({ keyId: k.keyId, publicKey: k.publicKey })), ...keys];
+    const kept = combined.slice(-cap);
+    const doc = await UserModel.findOneAndUpdate({ userId }, { $set: { oneTimePreKeys: kept } }, { new: true });
+    return toPlain(doc);
+  }
+
+  static async countOneTimePreKeys(userId) {
+    const doc = await UserModel.findOne({ userId }, { oneTimePreKeys: 1 });
+    return doc?.oneTimePreKeys?.length || 0;
+  }
+
+  /**
+   * Takes one one-time prekey out of the pool. Retries if another request claimed
+   * the same key first, so no key is ever handed to two people.
+   */
+  static async claimOneTimePreKey(userId) {
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const doc = await UserModel.findOne({ userId }, { oneTimePreKeys: 1 });
+      const candidate = doc?.oneTimePreKeys?.[0];
+      if (!candidate) return null;
+      const won = await UserModel.findOneAndUpdate(
+        { userId, 'oneTimePreKeys.keyId': candidate.keyId },
+        { $pull: { oneTimePreKeys: { keyId: candidate.keyId } } }
+      );
+      if (won) return { keyId: candidate.keyId, publicKey: candidate.publicKey };
+    }
+    return null;
+  }
+
+  static async findKeyMaterial(userId) {
+    const doc = await UserModel.findOne({ userId }, { identityKeyDh: 1, identityKeySig: 1, signedPreKey: 1 });
+    return doc ? toPlain(doc) : null;
   }
 }
 

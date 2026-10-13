@@ -18,6 +18,7 @@ import csrf from 'csurf';
 import cookieParser from 'cookie-parser';
 import authRoutes from './routes/authRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
+import keyRoutes from './routes/keyRoutes.js';
 import { setIO } from './services/socketRegistry.js';
 import { registerRealtime } from './services/realtime.js';
 import { connectDB, isDBConnected } from './services/db.js';
@@ -170,6 +171,7 @@ app.use('/api/', apiLimiter);
 
 app.use('/api/auth', authRoutes);
 app.use('/api/chat', chatRoutes);
+app.use('/api/keys', keyRoutes);
 
 app.use((req, res) => {
   res.status(404).json({ message: 'Not found' });
