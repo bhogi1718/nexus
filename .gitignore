@@ -31,5 +31,3 @@ server/public/
 logs/
 *.log
 
-# Local tooling config, not part of the project
-.claude/
