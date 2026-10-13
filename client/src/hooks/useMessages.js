@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import chatAPI from '../services/chatService';
-import { encryptMessage, getKeys } from '../services/cryptoService';
+import { encryptFor as encryptForPeer } from '../crypto/sessionManager';
 import {
   joinConversation,
   leaveConversation,
@@ -8,7 +8,7 @@ import {
   startTyping,
   stopTyping,
 } from '../services/socket';
-import { decryptMessageIfNeeded } from '../utils/decryptMessageIfNeeded';
+import { decryptMessages } from '../utils/decryptMessageIfNeeded';
 
 const TYPING_IDLE_MS = 1500;
 const PAGE_SIZE = 50;
@@ -46,7 +46,7 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
 
   const me = { _id: user?.id, name: user?.name, avatar: user?.avatar };
 
-  const decrypt = (list, conversation) => list.map(m => decryptMessageIfNeeded(m, conversation, user));
+  const decrypt = (list, conversation) => decryptMessages(list, conversation, user);
 
   const loadMessages = async (conversationId) => {
     const previous = selectedConversationRef.current;
@@ -74,7 +74,9 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
       if (selectedConversationRef.current !== conversationId) return;
 
       activeConversationRef.current = conversation;
-      setMessages(decrypt(response.data.messages, conversation));
+      const decrypted = await decrypt(response.data.messages, conversation);
+      if (selectedConversationRef.current !== conversationId) return;
+      setMessages(decrypted);
       setHasMore(Boolean(response.data.hasMore));
       joinConversation(conversationId);
 
@@ -97,7 +99,7 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
     try {
       const response = await chatAPI.getMessages(conversationId, { limit: PAGE_SIZE });
       if (selectedConversationRef.current !== conversationId) return;
-      const fresh = decrypt(response.data.messages, activeConversationRef.current);
+      const fresh = await decrypt(response.data.messages, activeConversationRef.current);
       setMessages(prev => {
         const freshIds = new Set(fresh.map(m => m._id));
         const freshClientIds = new Set(fresh.map(m => m.clientId).filter(Boolean));
@@ -126,7 +128,7 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
       const before = new Date(oldest.createdAt).toISOString();
       const response = await chatAPI.getMessages(conversationId, { limit: PAGE_SIZE, before });
       if (selectedConversationRef.current !== conversationId) return;
-      const older = decrypt(response.data.messages, activeConversationRef.current);
+      const older = await decrypt(response.data.messages, activeConversationRef.current);
       setMessages(prev => {
         const seen = new Set(prev.map(m => m._id));
         return [...older.filter(m => !seen.has(m._id)), ...prev];
@@ -139,15 +141,15 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
     }
   };
 
+  // Private chats are end-to-end encrypted; the server only ever stores ciphertext.
   const encryptFor = (conversationId, plaintext) => {
     const conversation = conversations.find(c => c._id === conversationId) || activeConversationRef.current;
     if (!conversation || conversation.type !== 'private' || conversation.participants.length !== 2) {
-      return plaintext;
+      return Promise.resolve(plaintext);
     }
-    const keys = getKeys();
     const other = conversation.participants.find(p => String(p._id) !== String(user.id));
-    if (!keys.publicKey || !keys.secretKey || !other?.publicKey) return plaintext;
-    return encryptMessage(plaintext, other.publicKey, keys.secretKey);
+    if (!other?._id) return Promise.reject(new Error('This chat has no recipient'));
+    return encryptForPeer(String(other._id), plaintext);
   };
 
   /**
@@ -162,7 +164,7 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
 
     let wireContent;
     try {
-      wireContent = encryptFor(conversationId, plaintext);
+      wireContent = await encryptFor(conversationId, plaintext);
     } catch (err) {
       console.error('Encryption error:', err);
       setError('This message could not be encrypted, so it was not sent.');

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
 import api from '../services/api';
-import { generateKeypair, storeKeys, getKeys } from '../services/cryptoService';
 import { useAuth } from '../hooks/useAuth';
 import { AuthLayout, FormError } from '../components/auth/AuthLayout';
 import { OtpInput, isOtpComplete } from '../components/auth/OtpInput';
@@ -63,27 +62,6 @@ export const Login = () => {
       // Update auth context so ProtectedRoute lets us through immediately
       const { accessToken, refreshToken } = response.data;
       loginWithToken(accessToken, refreshToken, response.data.user);
-
-      // Restore encryption keys: server is the source of truth so messages
-      // decrypt on any device/session. Only generate if the server has none.
-      const serverUser = response.data.user;
-      if (serverUser.publicKey && serverUser.secretKey) {
-        storeKeys(serverUser.publicKey, serverUser.secretKey);
-      } else {
-        let keys = getKeys();
-        if (!keys.secretKey || !keys.publicKey) {
-          keys = generateKeypair();
-          storeKeys(keys.publicKey, keys.secretKey);
-        }
-        try {
-          await api.post('/auth/update-public-key', {
-            publicKey: keys.publicKey,
-            secretKey: keys.secretKey
-          });
-        } catch (updateErr) {
-          console.warn('Failed to sync keys to server:', updateErr.message);
-        }
-      }
 
       navigate('/chat');
     } catch (err) {

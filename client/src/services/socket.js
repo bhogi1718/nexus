@@ -4,11 +4,12 @@ import { authAPI } from './api';
 // Derive the socket host from the API URL:
 // - absolute URL (http://host/api) → strip /api
 // - relative URL (/api, production same-origin) → current origin
-// - unset (local dev) → the dev backend
+// - unset, or relative in local dev → the dev backend (the Vite server has no socket)
+const DEV_BACKEND = 'http://localhost:5000';
 const rawApiUrl = import.meta.env.VITE_API_URL;
-const SOCKET_URL = rawApiUrl
-  ? (rawApiUrl.startsWith('http') ? rawApiUrl.replace(/\/api\/?$/, '') : window.location.origin)
-  : 'http://localhost:5000';
+const SOCKET_URL = rawApiUrl && rawApiUrl.startsWith('http')
+  ? rawApiUrl.replace(/\/api\/?$/, '')
+  : (rawApiUrl && !import.meta.env.DEV ? window.location.origin : DEV_BACKEND);
 
 let socket = null;
 // Rejoined after every reconnect: server-side room membership is lost whenever

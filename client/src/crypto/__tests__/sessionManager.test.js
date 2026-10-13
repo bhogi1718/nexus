@@ -68,8 +68,8 @@ const device = async (userId) => {
   vi.resetModules();
   const sm = await import('../sessionManager');
   const as = async (fn) => { actingAs = userId; return fn(); };
-  await as(() => sm.bindUser(userId));
-  await as(() => sm.ensureIdentity());
+  // Same path as sign-in: the server copy of the identity key is what it is.
+  await as(() => sm.bootstrap({ id: userId, identityKeyDh: server.get(userId)?.identityKeyDh ?? null }));
   return {
     send: (to, text) => as(() => sm.encryptFor(to, text)),
     read: (from, envelope) => as(() => sm.decryptFrom(from, envelope)),
@@ -164,8 +164,7 @@ describe('session manager', () => {
     // Bob reinstalls: new identity on the server.
     const bob2 = await device('bob');
     await bob2.as(() => bob2.sm.wipe());
-    await bob2.as(() => bob2.sm.bindUser('bob'));
-    await bob2.as(() => bob2.sm.ensureIdentity());
+    await bob2.as(() => bob2.sm.bootstrap({ id: 'bob', identityKeyDh: server.get('bob').identityKeyDh }));
 
     const { changed } = await alice.as(() => alice.sm.syncPeerIdentity('bob', server.get('bob').identityKeyDh));
     expect(changed).toBe(true);

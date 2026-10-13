@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { wipeAll } from '../crypto/store';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
@@ -87,8 +88,8 @@ api.interceptors.response.use(
 const endSession = () => {
   localStorage.removeItem('accessToken');
   localStorage.removeItem('refreshToken');
-  localStorage.removeItem('user_publicKey');
-  localStorage.removeItem('user_secretKey');
+  // Device keys and decrypted history are only ever valid for the account that made them.
+  wipeAll().catch(() => {});
   if (!['/login', '/signup', '/'].includes(window.location.pathname)) {
     window.location.href = '/login';
   }

@@ -28,11 +28,11 @@ export const useConversations = ({ user, setConversations, setError, setActiveTa
       const response = await chatAPI.getConversations();
       // Presence (isOnline / lastSeen) arrives with each participant, already
       // filtered through both users' privacy settings.
-      const list = (response.data.conversations || []).map(conv => (
+      const list = await Promise.all((response.data.conversations || []).map(async (conv) => (
         conv.lastMessage?.content
-          ? { ...conv, lastMessage: decryptMessageIfNeeded(conv.lastMessage, conv, user) }
+          ? { ...conv, lastMessage: await decryptMessageIfNeeded(conv.lastMessage, conv, user) }
           : conv
-      ));
+      )));
       list.sort((a, b) => new Date(b.lastMessageAt) - new Date(a.lastMessageAt));
       setConversations(list);
       hasLoadedRef.current = true;

@@ -80,10 +80,12 @@ export const useChatSocket = ({
 
     const unsubscribers = [
       // Messages in the conversation that's open.
-      subscribe('message:receive', (raw) => {
+      subscribe('message:receive', async (raw) => {
         if (!openId() || String(raw.conversation) !== String(openId())) return;
         const fromMe = idOf(raw.sender) === me();
-        const message = decryptMessageIfNeeded(raw, activeConversationRef.current, latest.current.user);
+        const message = await decryptMessageIfNeeded(raw, activeConversationRef.current, latest.current.user);
+        // The chat may have been switched while decrypting.
+        if (String(raw.conversation) !== String(openId())) return;
 
         setMessages(prev => {
           if (fromMe && raw.clientId && prev.some(m => m.clientId === raw.clientId)) {
@@ -101,7 +103,7 @@ export const useChatSocket = ({
       }),
 
       // Every message in any of my conversations (also those I sent from another tab).
-      subscribe('conversation:notify', (raw) => {
+      subscribe('conversation:notify', async (raw) => {
         const fromMe = idOf(raw.sender) === me();
         const isOpen = String(raw.conversation) === String(openId());
         if (!fromMe) confirmDelivered([raw._id]);
@@ -114,7 +116,7 @@ export const useChatSocket = ({
           return;
         }
 
-        const dec = decryptMessageIfNeeded(raw, known, latest.current.user);
+        const dec = await decryptMessageIfNeeded(raw, known, latest.current.user);
         const countsAsUnread = !fromMe && !(isOpen && isVisible());
         if (!fromMe) notifyDesktop(dec, known);
 

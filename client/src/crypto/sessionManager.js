@@ -103,8 +103,8 @@ const publish = async (identity) => {
 };
 
 /**
- * This device's identity, created on first use. It is saved locally *before*
- * being published, so the server can never advertise keys this device lacks.
+ * This device's identity, created on first use and kept only in this browser.
+ * Publishing is separate (see `bootstrap`).
  */
 export const ensureIdentity = () => {
   if (!currentUserId) return Promise.reject(new Error('No signed-in user'));
@@ -123,7 +123,6 @@ export const ensureIdentity = () => {
         };
         await saveIdentity(identity);
       }
-      if (!identity.published) await publish(identity);
       return identity;
     })();
     identityPromise.catch(() => { identityPromise = null; });
@@ -135,15 +134,18 @@ export const ensureIdentity = () => {
 export const myIdentityKey = async () => (await ensureIdentity()).identityDh.publicKey;
 
 /**
- * Makes sure the server advertises *this* device's keys. Signing in elsewhere
- * replaces them (one active device per account), so the device being used
- * re-publishes when it notices.
+ * Runs once the account is known (sign-in or page load). Creates this device's
+ * identity if needed, and publishes it when the server advertises a different key
+ * (first use, or the account was last used from another browser). Keys are saved
+ * locally before they are published, so the server never advertises keys this
+ * device lacks.
  */
-export const syncPublishedIdentity = async (serverIdentityKeyDh) => {
+export const bootstrap = async (user) => {
+  await bindUser(user.id);
   const identity = await ensureIdentity();
   const local = toBase64(identity.identityDh.publicKey);
-  if (serverIdentityKeyDh && serverIdentityKeyDh === local) return;
-  await publish(identity);
+  if (user.identityKeyDh !== local) await publish(identity);
+  await replenishPreKeys();
 };
 
 /** Tops up one-time prekeys so people can always start a chat with this device. */

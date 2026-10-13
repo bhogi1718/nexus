@@ -14,8 +14,8 @@ import {
   toHex,
 } from './primitives';
 
-export const MAX_SKIP = 100;
-export const MAX_SKIPPED_KEYS = 1000;
+export const MAX_SKIP = 1000;
+export const MAX_SKIPPED_KEYS = 2000;
 
 const ZERO_SALT = new Uint8Array(32);
 const RATCHET_INFO = new TextEncoder().encode('NexusRatchet');

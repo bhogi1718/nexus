@@ -1,7 +1,7 @@
 import React, { createContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/api';
 import { initializeSocket, disconnectSocket } from '../services/socket';
-import { storeKeys, clearKeys } from '../services/cryptoService';
+import { bootstrap, wipe } from '../crypto/sessionManager';
 
 export const AuthContext = createContext();
 
@@ -22,11 +22,6 @@ export const AuthProvider = ({ children }) => {
         const response = await authAPI.getProfile();
         if (cancelled) return;
         setUser(response.data.user);
-        // Restore this user's encryption keys from the server so decryption
-        // works after refresh, on new devices, and when switching accounts
-        if (response.data.user.publicKey && response.data.user.secretKey) {
-          storeKeys(response.data.user.publicKey, response.data.user.secretKey);
-        }
         initializeSocket(accessToken);
         setLoading(false);
       } catch (error) {
@@ -36,7 +31,7 @@ export const AuthProvider = ({ children }) => {
         if (status === 401 || status === 403) {
           localStorage.removeItem('accessToken');
           localStorage.removeItem('refreshToken');
-          clearKeys();
+          await wipe();
           setAccessToken(null);
           setLoading(false);
           return;
@@ -54,6 +49,16 @@ export const AuthProvider = ({ children }) => {
     checkAuth();
     return () => { cancelled = true; };
   }, [accessToken]);
+
+  // Encryption identity for whoever is signed in. Failure is not fatal here:
+  // the chat shows an error when a message can't be encrypted or opened.
+  const userId = user?.id;
+  useEffect(() => {
+    if (!userId) return;
+    bootstrap(user).catch(err => console.error('Encryption setup failed:', err));
+    // Only the account matters here, not profile edits.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
 
   // For OTP flows where the API call happens in the page component
   const loginWithToken = (newAccessToken, newRefreshToken, newUser) => {
@@ -74,7 +79,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('accessToken');
     localStorage.removeItem('refreshToken');
     // Keys must not survive logout, or they leak into the next account on a shared browser.
-    clearKeys();
+    await wipe();
     setAccessToken(null);
     setUser(null);
   };

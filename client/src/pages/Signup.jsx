@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate, Link, Navigate } from 'react-router-dom';
-import { generateKeypair, storeKeys } from '../services/cryptoService';
 import api from '../services/api';
 import { useAuth } from '../hooks/useAuth';
 import { AuthLayout, FormError } from '../components/auth/AuthLayout';
@@ -61,15 +60,8 @@ export const Signup = () => {
     setLoading(true);
 
     try {
-      const { publicKey, secretKey } = generateKeypair();
-      const response = await api.post('/auth/verify-otp-signup', {
-        name,
-        email,
-        otp,
-        publicKey,
-        secretKey
-      });
-      storeKeys(publicKey, secretKey);
+      // Keys are created on this device after sign-in; only public keys ever leave it.
+      const response = await api.post('/auth/verify-otp-signup', { name, email, otp });
       // Update auth context so ProtectedRoute lets us through immediately
       const { accessToken, refreshToken } = response.data;
       loginWithToken(accessToken, refreshToken, response.data.user);
