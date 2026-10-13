@@ -8,6 +8,8 @@ const formatSelf = (user) => ({
   email: user.email,
   avatar: user.avatar,
   status: user.status,
+  // Public identity key only; used to detect that this device's keys were replaced.
+  identityKeyDh: user.identityKeyDh || null,
   createdAt: user.createdAt,
   settings: {
     readReceipts: user.settings?.readReceipts !== false,

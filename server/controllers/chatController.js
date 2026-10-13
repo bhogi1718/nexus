@@ -17,6 +17,8 @@ const formatUser = (user, viewer) => user ? {
   email: user.email,
   avatar: user.avatar,
   status: user.status,
+  // Public identity key, shown in safety numbers.
+  identityKeyDh: user.identityKeyDh || null,
   ...visiblePresence(user, viewer),
 } : null;
 
