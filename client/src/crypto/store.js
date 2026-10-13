@@ -17,6 +17,10 @@ export const savePin = (peerId, pin) => set(`pin:${peerId}`, pin, db);
 export const loadPlaintext = (digest) => get(`plain:${digest}`, db);
 export const savePlaintext = (digest, text) => set(`plain:${digest}`, text, db);
 
+// One-shot markers (e.g. first messages that already opened a session).
+export const loadFlag = async (name) => Boolean(await get(`flag:${name}`, db));
+export const saveFlag = (name) => set(`flag:${name}`, true, db);
+
 /** Removes every key and session on this device (used on sign-out). */
 export const wipeAll = async () => {
   await clear(db);
