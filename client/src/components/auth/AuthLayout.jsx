@@ -3,7 +3,7 @@ import { Link } from 'react-router-dom';
 import { Icon } from '../ui/Icon';
 
 const POINTS = [
-  { icon: 'lock', text: 'Messages encrypted on your device' },
+  { icon: 'lock', text: 'End-to-end encrypted messages' },
   { icon: 'key', text: 'No password to remember — sign in with a code' },
   { icon: 'group', text: 'Only people you add can reach you' },
 ];

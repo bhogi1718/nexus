@@ -53,7 +53,7 @@ export const EncryptionSection = ({ userId, identityKeyDh, name }) => {
   if (!identityKeyDh) {
     return (
       <SettingGroup title="Encryption">
-        <Row icon="lock_open" text={`${name} hasn't opened Nexus since encryption was turned on. You can message them once they sign in.`} />
+        <Row icon="lock_open" text={`${name} hasn't signed in since end-to-end encryption arrived. You can message them once they do.`} />
       </SettingGroup>
     );
   }
@@ -61,7 +61,7 @@ export const EncryptionSection = ({ userId, identityKeyDh, name }) => {
   return (
     <SettingGroup
       title="Encryption"
-      description="Messages in this chat are end-to-end encrypted. Only you and this person can read them, not even Nexus."
+      description="Text messages in this chat are end-to-end encrypted. Only you and this person can read them, not even Nexus."
     >
       {changed && (
         <div className="px-md py-3.5 bg-warning-subtle flex gap-sm" role="alert">
@@ -95,7 +95,7 @@ export const EncryptionSection = ({ userId, identityKeyDh, name }) => {
             </div>
             <div className="mt-sm flex items-center justify-between gap-sm">
               <p className="text-caption text-content-muted text-pretty">
-                Matches on {name}'s phone or computer means the chat is secure.
+                If {name} sees the same number, your chat is secure.
               </p>
               <Button size="sm" variant="ghost" onClick={copy}>Copy</Button>
             </div>

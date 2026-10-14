@@ -6,8 +6,8 @@ import { Icon } from '../components/ui/Icon';
 const FEATURES = [
   {
     icon: 'lock',
-    title: 'Encrypted on your device',
-    body: 'Every text message is encrypted in your browser before it is sent, so it travels and is stored as ciphertext rather than readable text.',
+    title: 'End-to-end encrypted',
+    body: 'Text messages are locked on your device with keys that never leave it. Every message gets a fresh key, so one exposed key can’t unlock the rest. Not even Nexus can read them.',
   },
   {
     icon: 'bolt',
@@ -115,7 +115,7 @@ export const Landing = () => (
             <HeroIn>
               <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-surface border border-border text-caption text-content-secondary shadow-xs">
                 <Icon name="shield_lock" className="text-[16px] text-accent-strong" />
-                Private by design
+                End-to-end encrypted
               </span>
             </HeroIn>
 
@@ -129,7 +129,7 @@ export const Landing = () => (
             <HeroIn delay={160}>
               <p className="mt-md text-body-lg md:text-lg text-content-secondary max-w-xl mx-auto text-pretty">
                 Nexus is a messenger built around a simple idea — your words belong to you.
-                Encrypted on your device, delivered instantly, and only reachable by people you choose.
+                End-to-end encrypted, delivered instantly, and only reachable by people you choose.
               </p>
             </HeroIn>
 

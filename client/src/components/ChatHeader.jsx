@@ -56,7 +56,7 @@ export const ChatHeader = ({ conversation, onBack, onClose, user, isTyping = fal
 
       <span
         className="hidden sm:inline-flex items-center gap-1 px-2 py-1 rounded-full bg-surface-sunken text-caption text-content-secondary"
-        title="Messages in this conversation are encrypted on your device"
+        title="Messages in this chat are end-to-end encrypted"
       >
         <Icon name="lock" className="text-[14px]" />
         Encrypted

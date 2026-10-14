@@ -99,7 +99,7 @@ export const SettingsPanel = ({ onClose }) => {
         onClose={() => setConfirmSignOut(false)}
         onConfirm={logout}
         title="Log out of Nexus?"
-        message="Your encryption keys will be cleared from this device. You'll need a new sign-in code to get back in."
+        message="Your encryption keys and decrypted messages will be erased from this device, so your current chat history can't be read here again. You'll need a new sign-in code to get back in."
         confirmLabel="Log out"
         danger
       />
@@ -361,7 +361,7 @@ const HelpPage = () => (
       <p className="text-body-sm text-content-muted">Version {APP_VERSION}</p>
     </div>
     <SettingGroup>
-      <SettingRow icon="lock" label="Encryption" description="Text messages are encrypted on your device before they are sent." />
+      <SettingRow icon="lock" label="Encryption" description="Text messages are end-to-end encrypted with keys that never leave this device. Photos and files are not encrypted yet." />
       <SettingRow icon="done_all" label="Ticks" description="One tick: sent. Two ticks: delivered. Blue ticks: read." />
       <SettingRow icon="info" label="Version" value={APP_VERSION} />
     </SettingGroup>

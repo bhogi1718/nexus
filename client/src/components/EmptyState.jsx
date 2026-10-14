@@ -19,7 +19,7 @@ const CONFIGS = {
   noMessages: {
     icon: 'waving_hand',
     title: 'Say hello',
-    description: 'This is the beginning of your conversation. Messages are encrypted before they leave your device.',
+    description: 'This is the beginning of your conversation. Messages are end-to-end encrypted, so only the two of you can read them.',
   },
   noContacts: {
     icon: 'person_add',
