@@ -9,6 +9,7 @@ import { IconButton } from '../ui/IconButton';
 import { SettingGroup, SettingRow } from '../ui/SettingGroup';
 import { Skeleton } from '../ui/Skeleton';
 import { TextField } from '../ui/TextField';
+import { EncryptionSection } from './EncryptionSection';
 import { formatMonthYear, presenceLabel } from '../../utils/time';
 
 /**
@@ -194,13 +195,7 @@ export const ContactInfoPanel = ({
                 )}
               </SettingGroup>
 
-              <SettingGroup title="Privacy">
-                <SettingRow
-                  icon="lock"
-                  label="Encryption"
-                  description="Messages in this chat are encrypted on your device before they are sent."
-                />
-              </SettingGroup>
+              <EncryptionSection userId={userId} identityKeyDh={person.identityKeyDh} name={shownName} />
 
               <SettingGroup>
                 {person.isContact ? (
