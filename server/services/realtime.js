@@ -239,6 +239,12 @@ export const registerRealtime = (io) => {
       try {
         if (isRateLimited(userId, 'message:delivered', 300, 60000)) return;
         const ids = Array.isArray(payload.messageIds) ? payload.messageIds.slice(0, 200).map(String) : [];
+        // A chat created after this socket connected isn't cached yet; check it
+        // now, or receipts for it would be dropped.
+        const messages = await Message.findManyByIds(ids);
+        for (const id of new Set([...messages.values()].map(m => m.conversationId))) {
+          if (!memberOf.has(id)) await isMember(id);
+        }
         const changed = await Message.markDelivered(ids, userId, memberOf);
         notifyDelivered(changed, userId);
       } catch (err) {
