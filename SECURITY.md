@@ -53,24 +53,13 @@ methods: ['GET', 'POST']
 - ✅ Required env vars validated at startup
 - ✅ Database URI uses process.env (not hardcoded)
 - ✅ JWT secret uses process.env (not hardcoded)
-- ✅ AWS credentials use process.env (not hardcoded)
+- ✅ Cloudinary and Gmail credentials use process.env (not hardcoded)
 
 **Protected Secrets:**
 - `MONGODB_URI`
 - `JWT_SECRET`
-- `AWS_ACCESS_KEY_ID`
-- `AWS_SECRET_ACCESS_KEY`
-- `AWS_S3_BUCKET`
-
----
-
-### 6. **Project Settings**
-Development workflow protection:
-- ✅ Allow: npm, node, git, ls, cd, read, edit (controlled)
-- ✅ Deny: rm -rf, sudo, destructive commands
-- ✅ Deny: Direct `.env` file editing
-
-**Purpose:** Prevents accidental dangerous commands during development
+- `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`
+- `GMAIL_USER`, `GMAIL_APP_PASSWORD`
 
 ---
 
@@ -112,7 +101,7 @@ Development workflow protection:
 2. [ ] Set `NODE_ENV=production`
 3. [ ] Review CORS origins (whitelist production domains)
 4. [ ] Rotate JWT_SECRET
-5. [ ] Rotate AWS credentials
+5. [ ] Rotate Cloudinary and Gmail credentials
 6. [ ] Set up monitoring/alerts for rate limit violations
 7. [ ] Enable database authentication
 8. [ ] Set up database backups
