@@ -31,3 +31,8 @@ server/public/
 logs/
 *.log
 
+
+# Python virtualenvs
+.venv/
+venv/
+__pycache__/
