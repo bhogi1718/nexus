@@ -99,7 +99,7 @@ export const MessageBubble = ({
         )}
 
         <span className={`mt-0.5 flex items-center gap-1 text-[11px] tabular-nums
-          ${isCurrentUser ? 'justify-end text-content-on-primary/70' : 'text-content-muted'}`}>
+          ${isCurrentUser ? 'justify-end text-content-on-primary/80' : 'text-content-muted'}`}>
           {failed ? 'Not sent' : time}
           {status && <MessageStatus status={status} onBubble />}
         </span>
