@@ -61,7 +61,7 @@ export const EncryptionSection = ({ userId, identityKeyDh, name }) => {
   return (
     <SettingGroup
       title="Encryption"
-      description="Text messages in this chat are end-to-end encrypted. Only you and this person can read them, not even Nexus."
+      description="Messages and attachments in this chat are end-to-end encrypted. Only you and this person can read them, not even Nexus."
     >
       {changed && (
         <div className="px-md py-3.5 bg-warning-subtle flex gap-sm" role="alert">

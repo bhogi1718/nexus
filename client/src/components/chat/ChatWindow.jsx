@@ -200,6 +200,8 @@ export const ChatWindow = ({
         fileInputRef={fileInputRef}
         conversationId={conversation?._id}
         onUploadSuccess={onUploadSuccess}
+        // Same rule as text: private chats are end-to-end encrypted.
+        encryptAttachments={conversation?.type === 'private' && conversation.participants?.length === 2}
       />
     </>
   );

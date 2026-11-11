@@ -3,6 +3,7 @@ import { Avatar } from './ui/Avatar';
 import { Icon } from './ui/Icon';
 import { MediaMessage } from './MediaMessage';
 import { MessageStatus, messageStatus } from './MessageStatus';
+import { isSealedWithoutKey } from '../utils/attachments';
 
 const LONG_PRESS_MS = 450;
 
@@ -30,6 +31,8 @@ export const MessageBubble = ({
 
   const status = isCurrentUser ? messageStatus(message, user?.id) : null;
   const failed = status === 'failed';
+  // An encrypted file whose key this device doesn't have can't be shown at all.
+  const lockedFile = isSealedWithoutKey(message);
 
   // Long-press is a touch gesture; mouse users get right-click and the hover button.
   const handlePointerDown = (e) => {
@@ -85,13 +88,13 @@ export const MessageBubble = ({
           <p className="text-caption font-semibold text-content-secondary mb-0.5">{displayName}</p>
         )}
 
-        {message.fileUrl && <MediaMessage message={message} isCurrentUser={isCurrentUser} />}
+        {message.fileUrl && !lockedFile && <MediaMessage message={message} isCurrentUser={isCurrentUser} />}
 
         {!message.fileUrl && !message.undecryptable && message.content && (
           <p className="text-body-md whitespace-pre-wrap break-words">{message.content}</p>
         )}
 
-        {message.undecryptable && (
+        {(message.undecryptable || lockedFile) && (
           <p className="text-body-md italic opacity-70 flex items-center gap-1.5">
             <Icon name="lock" className="text-[16px]" />
             This message can't be decrypted on this device

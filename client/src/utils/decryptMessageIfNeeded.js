@@ -1,5 +1,6 @@
 import { decryptFrom, cachedPlaintext } from '../crypto/sessionManager';
 import { looksLikeEnvelope } from '../crypto/envelope';
+import { decodeDescriptor } from '../crypto/attachment';
 
 // Ciphertext from the encryption scheme used before this one. Its keys are gone,
 // so it can only ever be shown as "encrypted".
@@ -7,6 +8,23 @@ const looksLikeLegacyCiphertext = (content) =>
   typeof content === 'string' && content.length >= 50 && /^[A-Za-z0-9+/]+=*$/.test(content);
 
 const senderId = (message) => String(message.sender?._id ?? message.sender ?? '');
+
+// The decrypted text of an attachment message is its descriptor: the file's key
+// and real name, size and type, none of which the server holds.
+const withAttachment = (message) => {
+  if (!message.fileUrl) return message;
+  const descriptor = decodeDescriptor(message.content);
+  if (!descriptor) return message;
+  return {
+    ...message,
+    content: descriptor.name,
+    fileName: descriptor.name,
+    fileSize: descriptor.size,
+    type: descriptor.type,
+    fileKey: descriptor.key,
+    fileMime: descriptor.mime,
+  };
+};
 
 /**
  * Turns an encrypted message into its text. Our own messages come from the local
@@ -28,7 +46,7 @@ export const decryptMessageIfNeeded = async (message, conversation, user) => {
       ? await cachedPlaintext(content)
       : await decryptFrom(senderId(message), content);
     if (text === undefined) return { ...message, undecryptable: true };
-    return { ...message, content: text, isDecrypted: true };
+    return withAttachment({ ...message, content: text, isDecrypted: true });
   } catch {
     return { ...message, undecryptable: true };
   }

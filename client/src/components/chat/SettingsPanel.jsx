@@ -361,7 +361,7 @@ const HelpPage = () => (
       <p className="text-body-sm text-content-muted">Version {APP_VERSION}</p>
     </div>
     <SettingGroup>
-      <SettingRow icon="lock" label="Encryption" description="Text messages are end-to-end encrypted with keys that never leave this device. Photos and files are not encrypted yet." />
+      <SettingRow icon="lock" label="Encryption" description="Messages, photos and files are end-to-end encrypted with keys that never leave this device." />
       <SettingRow icon="done_all" label="Ticks" description="One tick: sent. Two ticks: delivered. Blue ticks: read." />
       <SettingRow icon="info" label="Version" value={APP_VERSION} />
     </SettingGroup>

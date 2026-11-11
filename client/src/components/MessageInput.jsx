@@ -21,6 +21,7 @@ export const MessageInput = React.forwardRef(({
   disabled,
   conversationId,
   onUploadSuccess,
+  encryptAttachments = false,
 }, ref) => {
   const textareaRef = useRef(null);
   const formRef = useRef(null);
@@ -90,7 +91,12 @@ export const MessageInput = React.forwardRef(({
     >
       <div className="max-w-reading mx-auto flex items-end gap-xs">
         <div className="flex-shrink-0">
-          <MediaUploader ref={fileInputRef} onUploadSuccess={onUploadSuccess} conversationId={conversationId} />
+          <MediaUploader
+            ref={fileInputRef}
+            onUploadSuccess={onUploadSuccess}
+            conversationId={conversationId}
+            encrypt={encryptAttachments}
+          />
         </div>
 
         <div className="flex-1 min-w-0 relative flex items-end bg-surface-sunken border border-transparent rounded-2xl

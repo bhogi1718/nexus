@@ -3,10 +3,14 @@ import api from '../services/api';
 import { Icon } from './ui/Icon';
 import { IconButton } from './ui/IconButton';
 import { useToast } from './ui/Toast';
+import { sealAttachment, SEALED_FILE_NAME, SEALED_MIME_TYPE } from '../crypto/attachment';
+import { rememberOpened } from '../utils/attachments';
 
 const MAX_BYTES = 50 * 1024 * 1024;
+// Sealed files are stored as opaque "raw" uploads, which the storage plan caps at 10 MB.
+const MAX_SEALED_BYTES = 10 * 1024 * 1024;
 
-const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, ref) => {
+const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId, encrypt = false }, ref) => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [fileName, setFileName] = useState('');
@@ -23,15 +27,28 @@ const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, 
       return;
     }
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('conversationId', conversationId);
+    if (encrypt && file.size > MAX_SEALED_BYTES) {
+      toast.error('Files in encrypted chats must be smaller than 10 MB.');
+      return;
+    }
 
     setUploading(true);
     setUploadProgress(0);
     setFileName(file.name);
 
     try {
+      const formData = new FormData();
+      let sealed = null;
+      if (encrypt) {
+        // Sealed here, before it leaves the device: the server stores bytes it can't read.
+        const { key, sealed: bytes } = sealAttachment(new Uint8Array(await file.arrayBuffer()));
+        sealed = { key, mime: file.type, size: bytes.length };
+        formData.append('file', new Blob([bytes], { type: SEALED_MIME_TYPE }), SEALED_FILE_NAME);
+      } else {
+        formData.append('file', file);
+      }
+      formData.append('conversationId', conversationId);
+
       const response = await api.post('/chat/upload', formData, {
         onUploadProgress: (e) => {
           if (e.total) setUploadProgress(Math.round((e.loaded / e.total) * 100));
@@ -43,12 +60,17 @@ const MediaUploaderComponent = forwardRef(({ onUploadSuccess, conversationId }, 
       else if (file.type.startsWith('video/')) messageType = 'video';
       else if (file.type.startsWith('audio/')) messageType = 'voice';
 
+      if (sealed) {
+        // The sender already has the file: show it without downloading it back.
+        rememberOpened(response.data.url, file);
+      }
       onUploadSuccess({
         url: response.data.url,
-        fileName: response.data.fileName,
-        fileSize: response.data.fileSize,
+        fileName: sealed ? file.name : response.data.fileName,
+        fileSize: sealed ? file.size : response.data.fileSize,
         type: messageType,
         s3Key: response.data.s3Key,
+        sealed,
       });
     } catch (error) {
       toast.error(error.response?.data?.message || 'Upload failed. Please try again.');

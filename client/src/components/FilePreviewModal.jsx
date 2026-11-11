@@ -35,6 +35,7 @@ export const FilePreviewModal = ({ file, onClose, onDownload, downloading }) => 
 
   if (!file) return null;
   const size = formatFileSize(file.size);
+  const needsUrl = file.kind === 'image' || file.kind === 'video' || file.kind === 'pdf';
 
   return (
     <div
@@ -73,13 +74,25 @@ export const FilePreviewModal = ({ file, onClose, onDownload, downloading }) => 
       </header>
 
       <div className="flex-1 min-h-0 flex items-center justify-center p-md" onClick={(e) => e.stopPropagation()}>
-        {file.kind === 'image' && (
+        {/* An encrypted file has no URL until it has been decrypted on this device. */}
+        {needsUrl && !file.url && (
+          <div className="text-center text-white" role="status">
+            <Icon
+              name={file.failed ? 'error' : 'progress_activity'}
+              className={`text-[48px] text-white/70 ${file.failed ? '' : 'animate-spin'}`}
+            />
+            <p className="mt-sm text-body-sm text-white/60">
+              {file.failed ? 'This file could not be decrypted.' : 'Decrypting…'}
+            </p>
+          </div>
+        )}
+        {file.kind === 'image' && file.url && (
           <img src={file.url} alt={file.fileName || 'Image'} className="max-w-full max-h-full object-contain rounded-lg shadow-2xl" />
         )}
-        {file.kind === 'video' && (
+        {file.kind === 'video' && file.url && (
           <video src={file.url} controls autoPlay className="max-w-full max-h-full rounded-lg bg-black" />
         )}
-        {file.kind === 'pdf' && (
+        {file.kind === 'pdf' && file.url && (
           // Not sandboxed: a sandboxed frame blocks the browser's PDF viewer and renders blank.
           <iframe src={file.url} title={file.fileName || 'PDF'} className="w-full max-w-4xl h-full rounded-lg bg-white" />
         )}

@@ -131,10 +131,12 @@ export const sendMessage = (conversationId, content, { clientId, media } = {}) =
 
   const payload = { conversationId, content, clientId };
   if (media) {
+    // For an encrypted file the server gets placeholders, not the real name or type.
+    const meta = media.wire || media;
     payload.fileUrl = media.fileUrl;
-    payload.fileName = media.fileName;
-    payload.fileSize = media.fileSize;
-    payload.type = media.type;
+    payload.fileName = meta.fileName;
+    payload.fileSize = meta.fileSize;
+    payload.type = meta.type;
     payload.s3Key = media.s3Key;
   }
 

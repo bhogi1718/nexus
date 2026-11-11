@@ -7,7 +7,7 @@ const FEATURES = [
   {
     icon: 'lock',
     title: 'End-to-end encrypted',
-    body: 'Text messages are locked on your device with keys that never leave it. Every message gets a fresh key, so one exposed key can’t unlock the rest. Not even Nexus can read them.',
+    body: 'Messages and attachments are locked on your device with keys that never leave it. Every message gets a fresh key, so one exposed key can’t unlock the rest. Not even Nexus can read them.',
   },
   {
     icon: 'bolt',

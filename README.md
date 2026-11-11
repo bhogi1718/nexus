@@ -15,7 +15,7 @@ Messages are encrypted on the sender's device using the same building blocks as 
 - **Installable PWA** with a responsive layout for mobile, tablet and desktop
 
 ### Security and privacy
-- **End-to-end encryption for text messages in private chats.** Only the two people in a chat can read them, not even the server.
+- **End-to-end encryption for messages and attachments in private chats.** Only the two people in a chat can read them, not even the server.
 - **Safety numbers:** compare a short code with a contact to confirm nobody is in the middle
 - **Key-change warnings:** if a contact's identity key changes, the chat says so and asks you to re-verify
 - **Passwordless sign-in** with one-time email codes, stored hashed, with attempt limits and temporary account lockout
@@ -31,10 +31,11 @@ Messages are encrypted on the sender's device using the same building blocks as 
 | **X3DH** | Starting a chat fetches the contact's prekey bundle, verifies the signature, and derives a shared secret, even if they're offline. |
 | **Double Ratchet** | Every message gets a fresh key. Old keys are destroyed after use, so a key stolen today can't decrypt past messages. |
 | **Safety numbers** | Derived from both people's identity keys. Matching numbers on both phones means the keys haven't been swapped. |
+| **Attachments** | A file is encrypted on the sender's device with a one-off key before upload. The key, file name and type travel inside the encrypted message, so storage only ever holds unreadable bytes. |
 
 Primitives come from TweetNaCl (X25519, Ed25519, XSalsa20-Poly1305) and WebCrypto (HKDF, HMAC). Keys and session state are kept in the browser's IndexedDB. The protocol has unit tests with test vectors in `client/src/crypto/__tests__`.
 
-**Scope, stated plainly:** text in one-to-one chats is end-to-end encrypted. File attachments are uploaded to Cloudinary over HTTPS but are not end-to-end encrypted. Encryption keys are per browser, so signing in on a new device starts fresh sessions.
+**Scope, stated plainly:** text and file attachments in one-to-one chats are end-to-end encrypted. The server still sees who is talking to whom, when, and roughly how large an attachment is. Encrypted attachments are limited to 10 MB. Encryption keys are per browser, so signing in on a new device starts fresh sessions.
 
 ## Tech stack
 

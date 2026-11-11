@@ -19,7 +19,9 @@ const fileFilter = (req, file, cb) => {
     'audio/wav': ['.wav'],
     'audio/ogg': ['.ogg'],
     'video/mp4': ['.mp4'],
-    'video/webm': ['.webm']
+    'video/webm': ['.webm'],
+    // A file encrypted on the sender's device: opaque bytes the server can't inspect.
+    'application/octet-stream': ['.bin']
   };
 
   const ext = path.extname(file.originalname).toLowerCase();

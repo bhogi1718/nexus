@@ -496,6 +496,11 @@ export const uploadMedia = async (req, res) => {
     if (!conversation || !isParticipant(conversation, req.userId)) {
       return res.status(404).json({ message: 'Conversation not found' });
     }
+    // Private chats are end-to-end encrypted, so only files already encrypted on
+    // the sender's device are stored for them.
+    if (conversation.type === 'private' && req.file.mimetype !== 'application/octet-stream') {
+      return res.status(400).json({ message: 'Attachments in this chat must be encrypted. Refresh Nexus and try again.' });
+    }
 
     const uploadResult = await uploadFile(req.file.buffer, req.file.originalname, conversationId, req.file.mimetype);
 

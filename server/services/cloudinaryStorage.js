@@ -37,7 +37,11 @@ export async function uploadFile(fileBuffer, fileName, conversationId, mimeType)
   const resourceType = resourceTypeFor(mimeType);
   const ext = path.extname(fileName).toLowerCase();
   // Raw files keep their extension in the public_id so the delivered URL has one.
-  const publicId = `${uuidv4()}-${safeBaseName(fileName)}${resourceType === 'raw' ? ext : ''}`;
+  // A file encrypted on the sender's device is opaque bytes: it gets a bare id,
+  // which says nothing about it (and Cloudinary refuses a `.bin` extension).
+  const publicId = mimeType === 'application/octet-stream'
+    ? uuidv4()
+    : `${uuidv4()}-${safeBaseName(fileName)}${resourceType === 'raw' ? ext : ''}`;
 
   const result = await new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(

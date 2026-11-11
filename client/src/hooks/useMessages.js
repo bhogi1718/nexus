@@ -9,6 +9,7 @@ import {
   stopTyping,
 } from '../services/socket';
 import { decryptMessages } from '../utils/decryptMessageIfNeeded';
+import { encodeDescriptor, SEALED_FILE_NAME, SEALED_MESSAGE_TYPE } from '../crypto/attachment';
 
 const TYPING_IDLE_MS = 1500;
 const PAGE_SIZE = 50;
@@ -164,7 +165,8 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
 
     let wireContent;
     try {
-      wireContent = await encryptFor(conversationId, plaintext);
+      // An encrypted file's message text is its descriptor (key, real name and type).
+      wireContent = await encryptFor(conversationId, media?.descriptor || plaintext);
     } catch (err) {
       console.error('Encryption error:', err);
       setError('This message could not be encrypted, so it was not sent.');
@@ -188,6 +190,8 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
         fileName: media.fileName,
         fileSize: media.fileSize,
         type: media.type,
+        fileKey: media.fileKey,
+        fileMime: media.fileMime,
         media,
       }),
     };
@@ -249,12 +253,27 @@ export const useMessages = ({ user, conversations, setConversations, setTypingUs
   };
 
   const handleMediaUploadSuccess = async (mediaData) => {
+    const { sealed } = mediaData;
     await sendContent(mediaData.fileName, {
       fileUrl: mediaData.url,
       fileName: mediaData.fileName,
       fileSize: mediaData.fileSize,
       type: mediaData.type,
       s3Key: mediaData.s3Key,
+      // Encrypted on this device: the real name, size and type go inside the
+      // encrypted message, and the server is sent placeholders (`wire`).
+      ...(sealed && {
+        fileKey: sealed.key,
+        fileMime: sealed.mime,
+        descriptor: encodeDescriptor({
+          key: sealed.key,
+          name: mediaData.fileName,
+          size: mediaData.fileSize,
+          mime: sealed.mime,
+          type: mediaData.type,
+        }),
+        wire: { fileName: SEALED_FILE_NAME, fileSize: sealed.size, type: SEALED_MESSAGE_TYPE },
+      }),
     });
   };
 
