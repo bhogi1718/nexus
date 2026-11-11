@@ -109,7 +109,7 @@ export const Login = () => {
   return (
     <AuthLayout
       title="Check your email"
-      subtitle={<>We sent a 6-digit code to <strong className="text-content font-semibold">{email}</strong>.</>}
+      subtitle={<>We sent a 6-digit code to <strong className="text-content font-semibold">{email}</strong>. If you don't see it, check your spam folder.</>}
       footer={footer}
     >
       <FormError>{error}</FormError>

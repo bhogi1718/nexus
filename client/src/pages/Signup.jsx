@@ -128,7 +128,7 @@ export const Signup = () => {
   return (
     <AuthLayout
       title="Verify your email"
-      subtitle={<>Enter the 6-digit code we sent to <strong className="text-content font-semibold">{email}</strong>.</>}
+      subtitle={<>Enter the 6-digit code we sent to <strong className="text-content font-semibold">{email}</strong>. If you don't see it, check your spam folder.</>}
       footer={footer}
     >
       <FormError>{error}</FormError>
