@@ -13,6 +13,9 @@ function getTransporter() {
   if (!transporter) {
     transporter = nodemailer.createTransport({
       service: 'gmail',
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
       auth: {
         user: process.env.GMAIL_USER,
         pass: process.env.GMAIL_APP_PASSWORD,
@@ -52,13 +55,40 @@ export async function sendOTPViaEmail(email, otp) {
     </div>
   `;
 
+  const subject = 'Your Nexus verification code';
+  const text = `Your Nexus verification code is ${otp}. It expires in 5 minutes. Never share it with anyone.`;
+
   try {
+    // Hosts like Render's free tier block SMTP, so prefer an HTTPS email API when configured.
+    if (process.env.BREVO_API_KEY) {
+      const response = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: {
+          'api-key': process.env.BREVO_API_KEY,
+          'content-type': 'application/json',
+          accept: 'application/json',
+        },
+        body: JSON.stringify({
+          sender: { name: 'Nexus', email: process.env.GMAIL_USER },
+          to: [{ email }],
+          subject,
+          htmlContent,
+          textContent: text,
+        }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!response.ok) throw new Error(`Brevo responded ${response.status}: ${await response.text()}`);
+      const info = await response.json();
+      console.log(`OTP email sent | MessageId: ${info.messageId}`);
+      return info;
+    }
+
     const info = await getTransporter().sendMail({
       from: `"Nexus" <${process.env.GMAIL_USER}>`,
       to: email,
-      subject: 'Your Nexus verification code',
+      subject,
       html: htmlContent,
-      text: `Your Nexus verification code is ${otp}. It expires in 5 minutes. Never share it with anyone.`,
+      text,
     });
     console.log(`OTP email sent | MessageId: ${info.messageId}`);
     return info;

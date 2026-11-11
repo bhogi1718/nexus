@@ -33,7 +33,11 @@ const requiredEnvVars = [
   'CLOUDINARY_API_SECRET'
 ];
 // OTP emails are only sent in production; dev logs the code to the console.
-if (isProduction) requiredEnvVars.push('GMAIL_USER', 'GMAIL_APP_PASSWORD');
+// GMAIL_USER is the sender address; the transport is Brevo's API when BREVO_API_KEY is set, else Gmail SMTP.
+if (isProduction) {
+  requiredEnvVars.push('GMAIL_USER');
+  if (!process.env.BREVO_API_KEY) requiredEnvVars.push('GMAIL_APP_PASSWORD');
+}
 
 const missingEnvVars = requiredEnvVars.filter(env => !process.env[env]);
 
