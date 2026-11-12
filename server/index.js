@@ -14,8 +14,6 @@ import { createServer } from 'http';
 import { Server } from 'socket.io';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
-import csrf from 'csurf';
-import cookieParser from 'cookie-parser';
 import authRoutes from './routes/authRoutes.js';
 import chatRoutes from './routes/chatRoutes.js';
 import keyRoutes from './routes/keyRoutes.js';
@@ -114,24 +112,8 @@ app.use(cors({
   credentials: true
 }));
 
-// Cookie parser for CSRF protection
-app.use(cookieParser());
-
-// CSRF protection: skip for JWT-authenticated requests (API endpoints)
-// CSRF is mainly for form attacks; JWT provides sufficient protection for APIs
-const csrfProtection = csrf({ cookie: true });
-
-// Middleware to skip CSRF for requests with valid JWT
-const csrfSkipIfAuthed = (req, res, next) => {
-  if (req.headers.authorization?.startsWith('Bearer ')) {
-    return next(); // Skip CSRF for authenticated requests
-  }
-  csrfProtection(req, res, next);
-};
-
-app.get('/api/csrf-token', csrfProtection, (req, res) => {
-  res.json({ csrfToken: req.csrfToken() });
-});
+// No CSRF layer: the API authenticates with a Bearer header and sets no
+// session cookie, so a cross-site form post carries no credentials.
 
 // Security headers
 app.use((req, res, next) => {
@@ -169,6 +151,16 @@ app.use('/api/auth/send-otp', sendCodeLimiter);
 app.use('/api/auth/send-otp-login', sendCodeLimiter);
 app.use('/api/auth/verify-otp-signup', verifyCodeLimiter);
 app.use('/api/auth/verify-otp-login', verifyCodeLimiter);
+
+// Uploads are buffered in memory, so they get their own tighter budget.
+const uploadLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: isProduction ? 40 : 500,
+  message: { message: 'Too many uploads. Please wait a few minutes and try again.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+app.use('/api/chat/upload', uploadLimiter);
 
 // Apply general API rate limiting
 app.use('/api/', apiLimiter);

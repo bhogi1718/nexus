@@ -1,12 +1,10 @@
 import express from 'express';
 import { body, validationResult } from 'express-validator';
-import csrf from 'csurf';
 import { logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updateProfile, updateSettings } from '../controllers/authController.js';
 import { verifyToken } from '../middleware/auth.js';
 import { verifyRefreshToken, generateTokens, assertTokenCurrent } from '../services/tokenService.js';
 
 const router = express.Router();
-const csrfProtection = csrf({ cookie: true });
 
 // Validation middleware.
 // Emails are only trimmed and lower-cased — not normalizeEmail(), which strips

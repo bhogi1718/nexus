@@ -52,6 +52,10 @@ export const upload = multer({
   storage,
   fileFilter,
   limits: {
-    fileSize: 50 * 1024 * 1024 // 50MB limit
+    // Files are held in memory while they upload, so keep this near the 10 MB
+    // the client allows (plus encryption overhead) rather than far above it.
+    fileSize: 11 * 1024 * 1024,
+    files: 1,
+    fields: 5
   }
 });

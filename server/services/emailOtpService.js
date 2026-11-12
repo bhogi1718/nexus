@@ -3,6 +3,7 @@ import nodemailer from 'nodemailer';
 import OTP from '../models/OTP.js';
 
 const OTP_TTL_MS = 5 * 60 * 1000;
+const SEND_COOLDOWN_MS = 60 * 1000;
 const ACCOUNT_LOCK_THRESHOLD = 10;
 const ACCOUNT_LOCK_MS = 60 * 60 * 1000;
 const isProduction = () => process.env.NODE_ENV === 'production';
@@ -100,6 +101,13 @@ export async function sendOTPViaEmail(email, otp) {
 
 export async function generateAndSaveOTP(email) {
   const emailLower = email.toLowerCase();
+
+  // One code per address per minute: stops a victim's inbox being flooded from
+  // many IPs. The code already sent stays valid, so the person isn't locked out.
+  const latest = await OTP.findOne({ email: emailLower });
+  if (latest && Date.now() - new Date(latest.createdAt).getTime() < SEND_COOLDOWN_MS) {
+    return latest;
+  }
   await OTP.deleteMany({ email: emailLower });
 
   const otp = generateOTP();

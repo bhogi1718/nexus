@@ -19,6 +19,8 @@ const formatSelf = (user) => ({
 import { generateAndSaveOTP, verifyOTP } from '../services/emailOtpService.js';
 import { generateTokens, verifyRefreshToken } from '../services/tokenService.js';
 
+const CODE_SENT_MESSAGE = 'If this address can be used, a code is on its way. Check your spam folder too.';
+
 // Send OTP for signup
 export const sendOTP = async (req, res) => {
   try {
@@ -28,16 +30,15 @@ export const sendOTP = async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    // Check if email already exists and is verified
+    // The reply is the same whether or not the address already has an account,
+    // so this endpoint can't be used to find out who is registered. Someone
+    // who already has an account simply never receives a signup code.
     const existingUser = await User.findByEmail(email);
-    if (existingUser && existingUser.isEmailVerified) {
-      return res.status(400).json({ message: 'Email already registered' });
+    if (!(existingUser && existingUser.isEmailVerified)) {
+      await generateAndSaveOTP(email);
     }
 
-    // Generate and send OTP
-    await generateAndSaveOTP(email);
-
-    res.status(200).json({ message: 'OTP sent successfully', email });
+    res.status(200).json({ message: CODE_SENT_MESSAGE, email });
   } catch (error) {
     console.error('Send OTP error:', error);
     res.status(500).json({ message: 'We could not send a code right now. Please try again.' });
@@ -67,7 +68,7 @@ export const verifyOTPAndRegister = async (req, res) => {
     // Check if email already exists
     const existingUser = await User.findByEmail(email);
     if (existingUser && existingUser.isEmailVerified) {
-      return res.status(400).json({ message: 'Email already registered' });
+      return res.status(400).json({ message: 'Invalid or expired OTP' });
     }
 
     // Create new user (no password)
@@ -100,16 +101,13 @@ export const sendOTPLogin = async (req, res) => {
       return res.status(400).json({ message: 'Email is required' });
     }
 
-    // Check if email exists
+    // Same reply for unknown addresses; no code is sent to them.
     const user = await User.findByEmail(email);
-    if (!user) {
-      return res.status(400).json({ message: 'Email not registered' });
+    if (user) {
+      await generateAndSaveOTP(email);
     }
 
-    // Generate and send OTP
-    await generateAndSaveOTP(email);
-
-    res.status(200).json({ message: 'OTP sent successfully', email });
+    res.status(200).json({ message: CODE_SENT_MESSAGE, email });
   } catch (error) {
     console.error('Send OTP login error:', error);
     res.status(500).json({ message: 'We could not send a code right now. Please try again.' });

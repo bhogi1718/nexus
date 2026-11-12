@@ -1,5 +1,4 @@
 import express from 'express';
-import csrf from 'csurf';
 import {
   getOrCreateConversation,
   getConversations,
@@ -23,7 +22,6 @@ import { verifyToken } from '../middleware/auth.js';
 import { upload } from '../middleware/upload.js';
 
 const router = express.Router();
-const csrfProtection = csrf({ cookie: true });
 
 // All routes require authentication
 router.use(verifyToken);
