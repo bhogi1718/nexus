@@ -9,8 +9,8 @@ const POINTS = [
 ];
 
 const Wordmark = ({ inverse = false }) => (
-  <Link to="/" className="inline-flex items-center gap-2" aria-label="Nexus home">
-    <span className={`w-9 h-9 rounded-xl flex items-center justify-center
+  <Link to="/" className="inline-flex items-center gap-2">
+    <span aria-hidden="true" className={`w-9 h-9 rounded-xl flex items-center justify-center
       ${inverse ? 'bg-content-inverse/15 ring-1 ring-content-inverse/25' : 'bg-gradient-to-br from-primary to-surface-inverse'}`}>
       <span className="font-display text-content-inverse text-xl leading-none pb-0.5">N</span>
     </span>

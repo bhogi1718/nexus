@@ -218,8 +218,8 @@ export const Chat = () => {
 
       <nav className="bg-surface/85 backdrop-blur-md border-b border-border flex-shrink-0">
         <div className="px-md lg:px-lg h-14 lg:h-16 flex justify-between items-center gap-sm">
-          <Link to="/" className="flex items-center gap-2 min-w-0" aria-label="Nexus home">
-            <span className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-surface-inverse flex items-center justify-center flex-shrink-0">
+          <Link to="/" className="flex items-center gap-2 min-w-0">
+            <span aria-hidden="true" className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-surface-inverse flex items-center justify-center flex-shrink-0">
               <span className="font-display text-content-inverse text-lg leading-none pb-0.5">N</span>
             </span>
             <span className="font-display text-title-lg tracking-tight truncate">Nexus</span>

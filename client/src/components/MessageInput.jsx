@@ -3,15 +3,10 @@ import { Icon } from './ui/Icon';
 import { IconButton } from './ui/IconButton';
 import { MediaUploader } from './MediaUploader';
 import { usePreferences } from '../context/PreferencesContext';
+import { EMOJI_GROUPS } from '../utils/emoji';
 
 const MAX_HEIGHT_PX = 160;
 
-const EMOJI = [
-  '😀', '😂', '🥹', '😊', '😍', '🥰', '😘', '😉',
-  '🤔', '🙃', '😅', '😭', '😤', '😴', '🤗', '😎',
-  '👍', '👎', '👏', '🙏', '💪', '👋', '🤝', '✌️',
-  '❤️', '💜', '🩷', '✨', '🔥', '🎉', '🌸', '☕',
-];
 
 export const MessageInput = React.forwardRef(({
   value,
@@ -27,6 +22,8 @@ export const MessageInput = React.forwardRef(({
   const formRef = useRef(null);
   const emojiRef = useRef(null);
   const [showEmoji, setShowEmoji] = useState(false);
+  const [emojiGroup, setEmojiGroup] = useState(EMOJI_GROUPS[0].id);
+  const activeGroup = EMOJI_GROUPS.find(g => g.id === emojiGroup) || EMOJI_GROUPS[0];
   const { prefs } = usePreferences();
   const canSend = !disabled && value.trim().length > 0;
 
@@ -124,10 +121,27 @@ export const MessageInput = React.forwardRef(({
               <div
                 role="dialog"
                 aria-label="Emoji picker"
-                className="absolute bottom-full right-0 mb-sm w-[17rem] p-sm bg-surface border border-border rounded-xl shadow-lg animate-fade-in-up z-20"
+                className="absolute bottom-full right-0 mb-sm w-[19rem] max-w-[calc(100vw-1.5rem)] p-sm bg-surface border border-border rounded-xl shadow-lg animate-fade-in-up z-20"
               >
-                <div className="grid grid-cols-8 gap-0.5">
-                  {EMOJI.map(emoji => (
+                <div role="tablist" aria-label="Emoji categories" className="flex gap-0.5 pb-sm mb-sm border-b border-border">
+                  {EMOJI_GROUPS.map(g => (
+                    <button
+                      key={g.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={g.id === activeGroup.id}
+                      aria-label={g.label}
+                      title={g.label}
+                      onClick={() => setEmojiGroup(g.id)}
+                      className={`flex-1 h-8 rounded-md text-lg flex items-center justify-center transition-colors duration-fast
+                        ${g.id === activeGroup.id ? 'bg-surface-accent' : 'hover:bg-surface-sunken'}`}
+                    >
+                      {g.icon}
+                    </button>
+                  ))}
+                </div>
+                <div key={activeGroup.id} className="grid grid-cols-8 gap-0.5 max-h-56 overflow-y-auto overscroll-contain">
+                  {activeGroup.emoji.map(emoji => (
                     <button
                       key={emoji}
                       type="button"
