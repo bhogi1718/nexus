@@ -1,0 +1,6 @@
+# The sign-in and chat screens are kept out of search with an X-Robots-Tag
+# header (see vercel.json), which crawlers can only see if they may fetch them.
+User-agent: *
+Allow: /
+
+Sitemap: https://nexus-blond-five-68.vercel.app/sitemap.xml

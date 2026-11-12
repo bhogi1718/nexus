@@ -5,6 +5,7 @@ import { PreferencesProvider } from './context/PreferencesContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ProtectedRoute } from './components/ProtectedRoute';
 import { ErrorBoundary } from './components/ErrorBoundary';
+import { PageMeta } from './components/PageMeta';
 import { Landing } from './pages/Landing';
 import { Login } from './pages/Login';
 import { Signup } from './pages/Signup';
@@ -18,6 +19,7 @@ function App() {
         <ToastProvider>
           <Router>
             <AuthProvider>
+              <PageMeta />
               <Routes>
                 <Route path="/" element={<Landing />} />
                 <Route path="/login" element={<Login />} />
