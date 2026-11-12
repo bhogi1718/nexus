@@ -36,3 +36,8 @@ logs/
 .venv/
 venv/
 __pycache__/
+
+# Security audit reports (map of live vulnerabilities)
+SECURITY-AUDIT-*.md
+reports/security-audit/
+reports/website-audit/

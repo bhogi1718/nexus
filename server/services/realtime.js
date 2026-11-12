@@ -2,7 +2,7 @@ import Conversation from '../models/Conversation.js';
 import Message from '../models/Message.js';
 import User from '../models/User.js';
 import { sanitizeMessage } from './sanitizationService.js';
-import { verifyAccessToken } from './tokenService.js';
+import { verifyAccessToken, assertTokenCurrent } from './tokenService.js';
 import { addConnection, removeConnection, emitToUser } from './socketRegistry.js';
 import { lastSeenEnabled } from './privacy.js';
 import { notifyDelivered, readConversation } from './receipts.js';
@@ -101,11 +101,13 @@ const toWire = (message, sender, clientId) => {
 // --- registration ------------------------------------------------------------
 
 export const registerRealtime = (io) => {
-  io.use((socket, next) => {
+  io.use(async (socket, next) => {
     try {
       const token = socket.handshake.auth?.token;
       if (!token) return next(new Error('Authentication token required'));
-      socket.userId = verifyAccessToken(token).userId;
+      const decoded = verifyAccessToken(token);
+      await assertTokenCurrent(decoded);
+      socket.userId = decoded.userId;
       next();
     } catch {
       next(new Error('Invalid token'));
@@ -194,7 +196,16 @@ export const registerRealtime = (io) => {
         }
 
         const conversation = await Conversation.findById(conversationId);
-        const storageKey = data.storageKey || data.s3Key;
+        // A stored file must belong to this conversation's folder, or a client
+        // could point a message at (and later delete) another chat's file.
+        const claimedKey = data.storageKey || data.s3Key;
+        const storageKey = typeof claimedKey === 'string' && claimedKey.startsWith(`nexus/${conversationId}/`)
+          ? claimedKey
+          : null;
+        if (fileUrl && claimedKey && !storageKey) {
+          reply({ success: false, error: 'Attachment does not belong to this conversation' });
+          return;
+        }
         const attachment = fileUrl ? {
           fileUrl,
           fileName: sanitizeMessage(String(fileName || 'file')).slice(0, 255),

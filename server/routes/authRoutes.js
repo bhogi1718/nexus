@@ -3,7 +3,7 @@ import { body, validationResult } from 'express-validator';
 import csrf from 'csurf';
 import { logout, getProfile, sendOTP, verifyOTPAndRegister, sendOTPLogin, verifyOTPAndLogin, updateProfile, updateSettings } from '../controllers/authController.js';
 import { verifyToken } from '../middleware/auth.js';
-import { verifyRefreshToken, generateTokens } from '../services/tokenService.js';
+import { verifyRefreshToken, generateTokens, assertTokenCurrent } from '../services/tokenService.js';
 
 const router = express.Router();
 const csrfProtection = csrf({ cookie: true });
@@ -63,15 +63,16 @@ router.patch('/profile', verifyToken, updateProfile);
 router.patch('/settings', verifyToken, updateSettings);
 
 // Refresh token endpoint
-router.post('/refresh', (req, res) => {
+router.post('/refresh', async (req, res) => {
   try {
     const { refreshToken } = req.body;
-    if (!refreshToken) {
+    if (typeof refreshToken !== 'string' || !refreshToken) {
       return res.status(400).json({ message: 'Refresh token is required' });
     }
 
     const decoded = verifyRefreshToken(refreshToken);
-    const { accessToken, refreshToken: newRefreshToken } = generateTokens(decoded.userId);
+    const user = await assertTokenCurrent(decoded);
+    const { accessToken, refreshToken: newRefreshToken } = generateTokens(user.userId, user.tokenVersion || 0);
 
     res.json({
       accessToken,

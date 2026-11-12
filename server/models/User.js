@@ -25,6 +25,8 @@ const userSchema = new mongoose.Schema({
   lastSeen: { type: String, default: () => new Date().toISOString() },
   accountLockoutUntil: { type: String, default: null },
   failedOtpAttempts: { type: Number, default: 0 },
+  // Bumped on logout; tokens carry the version they were issued under.
+  tokenVersion: { type: Number, default: 0 },
   settings: {
     readReceipts: { type: Boolean, default: true },
     showLastSeen: { type: Boolean, default: true },
@@ -83,6 +85,12 @@ export class User {
       { $set: updates },
       { new: true }
     );
+    return toPlain(doc);
+  }
+
+  /** Invalidates every access and refresh token issued so far. */
+  static async bumpTokenVersion(userId) {
+    const doc = await UserModel.findOneAndUpdate({ userId }, { $inc: { tokenVersion: 1 } }, { new: true });
     return toPlain(doc);
   }
 

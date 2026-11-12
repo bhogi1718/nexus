@@ -1,11 +1,15 @@
 import jwt from 'jsonwebtoken';
+import User from '../models/User.js';
 
-export const generateTokens = (userId) => {
-  const accessToken = jwt.sign({ userId, type: 'access' }, process.env.JWT_SECRET, {
+// `tv` is the user's tokenVersion when the token was issued. Logging out bumps
+// it, which revokes every token issued before. Tokens from before this field
+// existed have no `tv` and count as version 0.
+export const generateTokens = (userId, tokenVersion = 0) => {
+  const accessToken = jwt.sign({ userId, type: 'access', tv: tokenVersion }, process.env.JWT_SECRET, {
     expiresIn: '1h'
   });
 
-  const refreshToken = jwt.sign({ userId, type: 'refresh' }, process.env.JWT_SECRET, {
+  const refreshToken = jwt.sign({ userId, type: 'refresh', tv: tokenVersion }, process.env.JWT_SECRET, {
     expiresIn: '7d'
   });
 
@@ -36,8 +40,21 @@ export const verifyRefreshToken = (token) => {
   }
 };
 
+/**
+ * Loads the token's user and checks the token has not been revoked.
+ * Returns the user, or throws if the user is gone or the token is stale.
+ */
+export const assertTokenCurrent = async (decoded) => {
+  const user = await User.findById(decoded.userId);
+  if (!user || (decoded.tv || 0) !== (user.tokenVersion || 0)) {
+    throw new Error('Token has been revoked');
+  }
+  return user;
+};
+
 export default {
   generateTokens,
   verifyAccessToken,
-  verifyRefreshToken
+  verifyRefreshToken,
+  assertTokenCurrent
 };

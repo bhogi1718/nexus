@@ -1,6 +1,6 @@
-import { verifyAccessToken } from '../services/tokenService.js';
+import { verifyAccessToken, assertTokenCurrent } from '../services/tokenService.js';
 
-export const verifyToken = (req, res, next) => {
+export const verifyToken = async (req, res, next) => {
   try {
     const token = req.headers.authorization?.split(' ')[1];
 
@@ -9,6 +9,7 @@ export const verifyToken = (req, res, next) => {
     }
 
     const decoded = verifyAccessToken(token);
+    await assertTokenCurrent(decoded);
     req.userId = decoded.userId;
     next();
   } catch (error) {
