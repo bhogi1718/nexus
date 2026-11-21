@@ -151,8 +151,10 @@ export class Message {
     );
     if (!unread.length) return [];
     const readAt = new Date().toISOString();
+    // The readBy filter makes this safe when two requests (REST and socket) mark
+    // the same conversation at once: only one of them adds the entry.
     await MessageModel.updateMany(
-      { messageId: { $in: unread.map(m => m.messageId) } },
+      { messageId: { $in: unread.map(m => m.messageId) }, 'readBy.user': { $ne: userId } },
       { $push: { readBy: { user: userId, readAt } }, $addToSet: { deliveredTo: userId } }
     );
     return unread.map(m => ({ messageId: m.messageId, conversationId: m.conversationId, sender: m.sender, readAt }));
