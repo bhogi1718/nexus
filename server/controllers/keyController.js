@@ -34,6 +34,17 @@ export const publishBundle = async (req, res) => {
       return res.status(400).json({ message: 'One-time prekeys are invalid' });
     }
 
+    // Replacing an existing identity key is the dangerous move (it lets whoever
+    // holds the token impersonate this user). It needs a recent OTP sign-in, not
+    // just a token that might have been stolen or refreshed.
+    const current = await User.findKeyMaterial(req.userId);
+    if (current?.identityKeyDh && current.identityKeyDh !== identityKeyDh && !req.freshLogin) {
+      return res.status(403).json({
+        code: 'REAUTH_REQUIRED',
+        message: 'Sign in again with your email code to set up encryption on a new device',
+      });
+    }
+
     await User.publishKeys(req.userId, {
       identityKeyDh,
       identityKeySig,

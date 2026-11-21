@@ -1,4 +1,4 @@
-import { verifyAccessToken, assertTokenCurrent } from '../services/tokenService.js';
+import { verifyAccessToken, assertTokenCurrent, isFreshLogin } from '../services/tokenService.js';
 
 export const verifyToken = async (req, res, next) => {
   try {
@@ -11,6 +11,7 @@ export const verifyToken = async (req, res, next) => {
     const decoded = verifyAccessToken(token);
     await assertTokenCurrent(decoded);
     req.userId = decoded.userId;
+    req.freshLogin = isFreshLogin(decoded);
     next();
   } catch (error) {
     res.status(401).json({ message: 'Invalid or expired token' });

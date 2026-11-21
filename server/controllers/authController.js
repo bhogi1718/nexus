@@ -78,7 +78,7 @@ export const verifyOTPAndRegister = async (req, res) => {
       isEmailVerified: true
     });
 
-    const { accessToken, refreshToken } = generateTokens(newUser.userId, newUser.tokenVersion || 0);
+    const { accessToken, refreshToken } = generateTokens(newUser.userId, newUser.tokenVersion || 0, { fresh: true });
 
     res.status(201).json({
       message: 'User registered successfully',
@@ -138,7 +138,7 @@ export const verifyOTPAndLogin = async (req, res) => {
       return res.status(400).json({ message: 'Email not found' });
     }
 
-    const { accessToken, refreshToken } = generateTokens(user.userId, user.tokenVersion || 0);
+    const { accessToken, refreshToken } = generateTokens(user.userId, user.tokenVersion || 0, { fresh: true });
 
     res.status(200).json({
       message: 'Login successful',
