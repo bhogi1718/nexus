@@ -16,6 +16,10 @@ vi.mock('../../services/keys', () => ({
       server.get(actingAs).oneTimePreKeys.push(...keys);
       return { data: {} };
     },
+    rotateSignedPreKey: async (spk) => {
+      server.get(actingAs).signedPreKey = JSON.parse(JSON.stringify(spk));
+      return { data: {} };
+    },
     preKeyCount: async () => ({ data: { count: server.get(actingAs)?.oneTimePreKeys.length || 0 } }),
     fetchBundle: async (userId) => {
       const b = server.get(userId);
@@ -89,6 +93,34 @@ describe('session manager', () => {
     expect(atob(b.signedPreKey.signature)).toHaveLength(64);
     expect(b.oneTimePreKeys.length).toBeGreaterThan(0);
     expect(JSON.stringify(b)).not.toMatch(/privateKey/);
+  });
+
+  it('rotates the signed prekey weekly and still opens first messages already in flight', async () => {
+    const alice = await device('alice');
+    const bob = await device('bob');
+    const before = server.get('bob').signedPreKey.keyId;
+
+    // Alice fetched Bob's old keys and wrote to him, then Bob rotated before reading.
+    const inFlight = await alice.send('bob', 'sent before rotation');
+    const week = 8 * 24 * 60 * 60 * 1000;
+    expect(await bob.as(() => bob.sm.rotateSignedPreKeyIfDue(Date.now() + week))).toBe(true);
+    expect(server.get('bob').signedPreKey.keyId).not.toBe(before);
+    expect(await bob.read('alice', inFlight)).toBe('sent before rotation');
+
+    // New conversations use the new key; a second call the same day does nothing.
+    const carol = await device('carol');
+    expect(await carol.send('bob', 'hello')).toBeTruthy();
+    expect(await bob.as(() => bob.sm.rotateSignedPreKeyIfDue(Date.now() + week))).toBe(false);
+  });
+
+  it('destroys retired signed prekeys after a month', async () => {
+    const bob = await device('bob');
+    const day = 24 * 60 * 60 * 1000;
+    await bob.as(() => bob.sm.rotateSignedPreKeyIfDue(Date.now() + 8 * day));
+    await bob.as(() => bob.sm.rotateSignedPreKeyIfDue(Date.now() + 40 * day));
+    const identity = stores.get('bob').get('identity');
+    // Only the key retired at day 40 is kept; the one retired at day 8 is gone.
+    expect(identity.oldSignedPreKeys).toHaveLength(1);
   });
 
   it('carries a conversation both ways', async () => {

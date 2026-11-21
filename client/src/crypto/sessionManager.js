@@ -3,7 +3,7 @@
 // and a cache of decrypted text (a message key is destroyed once used, so the
 // plaintext must be kept to show a message again).
 import { keysAPI } from '../services/keys';
-import { createIdentity, initiateX3DH, respondX3DH } from './x3dh';
+import { createIdentity, createSignedPreKey, initiateX3DH, respondX3DH } from './x3dh';
 import { initiatorState, responderState, ratchetEncrypt, ratchetDecrypt } from './doubleRatchet';
 import {
   encodeEnvelope,
@@ -145,7 +145,39 @@ export const bootstrap = async (user) => {
   const identity = await ensureIdentity();
   const local = toBase64(identity.identityDh.publicKey);
   if (user.identityKeyDh !== local) await publish(identity);
+  await rotateSignedPreKeyIfDue();
   await replenishPreKeys();
+};
+
+// Signal rotates the signed prekey about weekly. The old private half is kept for
+// a month so first messages that were already in flight can still be opened, then
+// destroyed: that is what gives first messages forward secrecy over time.
+const SIGNED_PREKEY_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
+const OLD_SIGNED_PREKEY_KEEP_MS = 30 * 24 * 60 * 60 * 1000;
+
+export const rotateSignedPreKeyIfDue = async (now = Date.now()) => {
+  const identity = await ensureIdentity();
+  const retired = (identity.oldSignedPreKeys || []).filter(k => now - k.retiredAt < OLD_SIGNED_PREKEY_KEEP_MS);
+  const due = !identity.signedPreKey.createdAt || now - identity.signedPreKey.createdAt >= SIGNED_PREKEY_MAX_AGE_MS;
+  if (!due) {
+    if (retired.length !== (identity.oldSignedPreKeys || []).length) {
+      identity.oldSignedPreKeys = retired;
+      await saveIdentity(identity);
+    }
+    return false;
+  }
+  const fresh = createSignedPreKey(identity.identitySig.privateKey);
+  fresh.createdAt = now;
+  // Saved first: the server must never advertise a key whose private half is missing here.
+  identity.oldSignedPreKeys = [...retired, { ...identity.signedPreKey, retiredAt: now }];
+  identity.signedPreKey = fresh;
+  await saveIdentity(identity);
+  await keysAPI.rotateSignedPreKey({
+    keyId: fresh.keyId,
+    publicKey: toBase64(fresh.publicKey),
+    signature: toBase64(fresh.signature),
+  });
+  return true;
 };
 
 /** Tops up one-time prekeys so people can always start a chat with this device. */
@@ -284,7 +316,9 @@ const acceptInitial = async (parsed) => {
   const seenKey = `initial:${toHex(parsed.initial.ephemeralPublicKey)}`;
   if (await loadFlag(seenKey)) throw new Error('This message was already used to start a session');
 
-  if (parsed.initial.signedPreKeyId !== identity.signedPreKey.keyId) {
+  const signedPreKey = [identity.signedPreKey, ...(identity.oldSignedPreKeys || [])]
+    .find(k => k.keyId === parsed.initial.signedPreKeyId);
+  if (!signedPreKey) {
     throw new Error('This message was sent to keys this device no longer has');
   }
 
@@ -297,11 +331,11 @@ const acceptInitial = async (parsed) => {
   const oneTimePreKey = opkIndex >= 0 ? identity.oneTimePreKeys[opkIndex] : null;
 
   const sharedSecret = await respondX3DH(
-    { identity, signedPreKey: identity.signedPreKey, oneTimePreKey },
+    { identity, signedPreKey, oneTimePreKey },
     parsed.initial
   );
   return {
-    state: responderState(sharedSecret, identity.signedPreKey),
+    state: responderState(sharedSecret, signedPreKey),
     // Committed only after the first message actually decrypts.
     commit: async () => {
       if (opkIndex >= 0) {
@@ -310,6 +344,8 @@ const acceptInitial = async (parsed) => {
         await saveIdentity(fresh);
       }
       await saveFlag(seenKey);
+      // A one-time key was just used up: top the pool up in the background.
+      if (opkIndex >= 0) replenishPreKeys().catch(() => {});
     },
   };
 };

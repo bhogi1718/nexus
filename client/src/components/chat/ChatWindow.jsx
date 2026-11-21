@@ -7,6 +7,7 @@ import { MessageInput } from '../MessageInput';
 import { SkeletonMessage } from '../SkeletonMessage';
 import { EmptyState } from '../EmptyState';
 import { DateSeparator } from './DateSeparator';
+import { KeyChangeBanner } from './KeyChangeBanner';
 import { buildMessageTimeline } from '../../utils/messageGrouping';
 
 const NEAR_BOTTOM_THRESHOLD_PX = 150;
@@ -94,6 +95,9 @@ export const ChatWindow = ({
 
   const timeline = buildMessageTimeline(messages);
   const isMobile = variant === 'mobile';
+  const peer = conversation?.type === 'private'
+    ? conversation.participants?.find(p => String(p._id) !== String(user?.id))
+    : null;
 
   return (
     <>
@@ -106,6 +110,8 @@ export const ChatWindow = ({
         displayName={displayName}
         onOpenInfo={onOpenInfo}
       />
+
+      {peer && <KeyChangeBanner peer={peer} name={displayName(peer)} onVerify={onOpenInfo} />}
 
       <div className="relative flex-1 flex flex-col min-h-0">
         <div

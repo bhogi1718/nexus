@@ -20,11 +20,16 @@ export const ONE_TIME_PREKEY_BATCH = 20;
  * for signing), a signed prekey and a batch of one-time prekeys. Secret parts stay
  * on the device; only `publicBundle` is uploaded.
  */
+export const createSignedPreKey = (identitySigPrivateKey) => {
+  const signedPreKey = { keyId: randomId(), ...dhKeyPair(), createdAt: Date.now() };
+  signedPreKey.signature = sign(signedPreKey.publicKey, identitySigPrivateKey);
+  return signedPreKey;
+};
+
 export const createIdentity = (oneTimeCount = ONE_TIME_PREKEY_BATCH) => {
   const identityDh = dhKeyPair();
   const identitySig = signKeyPair();
-  const signedPreKey = { keyId: randomId(), ...dhKeyPair() };
-  signedPreKey.signature = sign(signedPreKey.publicKey, identitySig.privateKey);
+  const signedPreKey = createSignedPreKey(identitySig.privateKey);
   const oneTimePreKeys = Array.from({ length: oneTimeCount }, () => ({ keyId: randomId(), ...dhKeyPair() }));
   return {
     identityDh,

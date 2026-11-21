@@ -47,6 +47,24 @@ export const publishBundle = async (req, res) => {
   }
 };
 
+/** Replaces only the signed prekey; the identity and one-time keys are untouched. */
+export const rotateSignedPreKey = async (req, res) => {
+  try {
+    const spk = req.body?.signedPreKey;
+    if (!spk || !isKeyId(spk.keyId) || !isKey(spk.publicKey) || !isKey(spk.signature, SIGNATURE_BYTES)) {
+      return res.status(400).json({ message: 'Signed prekey is invalid' });
+    }
+    const user = await User.setSignedPreKey(req.userId, {
+      keyId: spk.keyId, publicKey: spk.publicKey, signature: spk.signature,
+    });
+    if (!user) return res.status(404).json({ message: 'User not found' });
+    res.status(200).json({ message: 'Signed prekey rotated' });
+  } catch (error) {
+    console.error('Rotate signed prekey error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 export const addOneTimePreKeys = async (req, res) => {
   try {
     const keys = req.body?.oneTimePreKeys;

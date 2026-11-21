@@ -143,6 +143,11 @@ export class User {
     return toPlain(doc);
   }
 
+  static async setSignedPreKey(userId, signedPreKey) {
+    const doc = await UserModel.findOneAndUpdate({ userId }, { $set: { signedPreKey } }, { new: true });
+    return toPlain(doc);
+  }
+
   static async addOneTimePreKeys(userId, keys, cap) {
     const current = await UserModel.findOne({ userId }, { oneTimePreKeys: 1 });
     if (!current) return null;
