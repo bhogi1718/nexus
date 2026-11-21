@@ -41,3 +41,7 @@ __pycache__/
 SECURITY-AUDIT-*.md
 reports/security-audit/
 reports/website-audit/
+
+# Local assistant docs
+CLAUDE.md
+HANDOVER.md
